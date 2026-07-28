@@ -37,7 +37,7 @@ otel = ["opentelemetry-api>=1.42.0", "opentelemetry-sdk>=1.42.0"]
 # Pinned exactly. An unpinned linter breaks CI on a day nobody changed
 # anything, because its default rule set moved underneath the build. Bump it
 # deliberately, in its own commit, with the findings it produces.
-dev = ["pytest>=8.0,<9", "ruff==0.16.0"]
+dev = ["pytest>=8.0,<9", "ruff==0.16.0", "jsonschema>=4.20"]
 
 [project.urls]
 Homepage = "https://github.com/NICE-DEV226/kelvra"

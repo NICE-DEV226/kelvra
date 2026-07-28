@@ -126,8 +126,11 @@ def test_a_model_call_joins_every_input(k):
     assert not k.would_allow("slack.support_channel", out)
 
 
-def test_mixing_public_with_confidential_stays_confidential(k):
-    k.policy.add_source(Source("docs.public", Label.public()))
+def test_mixing_public_with_confidential_stays_confidential():
+    policy = build_policy()
+    policy.add_source(Source("docs.public", Label.public()))
+    k = Kelvra(policy)
+
     pub = k.read("docs.public", "faq")
     record = k.read("crm.customer_record", "acct")
     out = k.model_call("agent.merge", pub, record)
@@ -238,13 +241,42 @@ def test_consent_refusal_blocks_the_declassification():
 def test_consent_defaults_to_refusal():
     """No consent provider configured means no consent, not implicit yes."""
     p = build_policy()
-    p.add_sink(
-        Sink("risky", audience=PrincipalSet.all(), requires_consent_from="customer")
-    )
-    k = Kelvra(p)  # no consent provider
+    p.add_sink(Sink("risky", audience=PrincipalSet.all(), requires_consent_from="customer"))
     p.add_source(Source("pub", Label.public()))
+
+    k = Kelvra(p)  # no consent provider
     data = k.read("pub", "x")
     from kelvra import ConsentRefused
 
     with pytest.raises(ConsentRefused):
         k.emit("risky", data)
+
+
+# -- policy sealing ---------------------------------------------------------
+
+
+def test_a_session_seals_the_policy_it_governs(k):
+    """A run whose policy changed underneath it cannot be honestly attested to."""
+    from kelvra.policy import PolicySealed
+
+    with pytest.raises(PolicySealed):
+        k.policy.add_sink(Sink("late", audience=PrincipalSet.all()))
+
+
+def test_mutating_the_original_policy_does_not_reach_a_running_session():
+    """The session holds a snapshot, so the caller's object stays usable."""
+    p = build_policy()
+    k = Kelvra(p)
+
+    p.add_sink(Sink("added_later", audience=PrincipalSet.all()))  # no error
+    assert "added_later" in p.sinks
+    assert "added_later" not in k.policy.sinks
+
+    with pytest.raises(LookupError):
+        k.emit("added_later", k.read("inbox.imap", "x"))
+
+
+def test_the_fingerprint_ignores_the_seal_flag():
+    """Sealing is lifecycle, not meaning. It must not change the attestation."""
+    p = build_policy()
+    assert p.fingerprint() == p.seal().fingerprint()

@@ -147,6 +147,10 @@ def endorse_as(name: str, *endorsers: str, consent_from: str | None = None) -> D
     )
 
 
+class PolicySealed(Exception):
+    """Raised on an attempt to modify a policy that is governing a run."""
+
+
 @dataclass
 class Policy:
     """A named collection of sources, sinks and declassifiers."""
@@ -156,23 +160,62 @@ class Policy:
     sources: dict[str, Source] = field(default_factory=dict)
     sinks: dict[str, Sink] = field(default_factory=dict)
     declassifiers: dict[str, Declassifier] = field(default_factory=dict)
+    sealed: bool = False
+    """A sealed policy cannot be modified. See :meth:`seal`."""
+
+    def _check_mutable(self) -> None:
+        if self.sealed:
+            raise PolicySealed(
+                f"policy {self.name!r} is sealed and governing a run. "
+                "Build the policy before starting the session -- a run whose policy "
+                "changed underneath it cannot be honestly attested to."
+            )
 
     def add_source(self, source: Source) -> Source:
+        self._check_mutable()
         self.sources[source.name] = source
         return source
 
     def add_sink(self, sink: Sink) -> Sink:
+        self._check_mutable()
         self.sinks[sink.name] = sink
         return sink
 
     def add_declassifier(self, d: Declassifier) -> Declassifier:
+        self._check_mutable()
         self.declassifiers[d.name] = d
         return d
 
-    def fingerprint(self) -> str:
-        """Stable hash of the policy, recorded in every provenance record.
+    def seal(self) -> Policy:
+        """Return an immutable snapshot, for a session to enforce against.
 
-        Lets an auditor confirm which policy was in force for a given run.
+        The provenance record carries a fingerprint of the policy that was in
+        force. If the policy could change mid-run, that fingerprint would
+        attest to something other than what was actually enforced -- and it
+        would do so under a signature, which makes a misleading record look
+        authoritative. Sealing removes the possibility rather than detecting
+        it afterwards.
+
+        The caller's policy object is untouched and stays mutable; the
+        session holds this copy.
+        """
+        return Policy(
+            name=self.name,
+            version=self.version,
+            sources=dict(self.sources),
+            sinks=dict(self.sinks),
+            declassifiers=dict(self.declassifiers),
+            sealed=True,
+        )
+
+    def fingerprint(self) -> str:
+        """Stable hash of the effective policy, recorded in every run.
+
+        Lets an auditor confirm which policy was in force. Computed over the
+        effective content rather than any source text, so two differently
+        written policies with identical semantics fingerprint the same.
+        Excludes :attr:`sealed`, which is a lifecycle flag and not part of
+        what the policy means.
         """
         import hashlib
         import json

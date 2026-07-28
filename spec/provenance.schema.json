@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/NICE-DEV226/kelvra/spec/provenance.schema.json",
+  "title": "Kelvra provenance record",
+  "description": "One agent run. Normative prose: spec/provenance.md. This schema cannot express the payload rule of section 2 - that a record must never contain the data it describes - because no schema can prove the absence of something it has not seen. Conformance still requires it.",
+  "type": "object",
+  "required": ["kelvra_version", "policy", "run_id", "started_at", "ended_at", "summary", "events"],
+  "additionalProperties": false,
+
+  "properties": {
+    "kelvra_version": {
+      "type": "string",
+      "description": "Version of the specification this record follows.",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "policy": { "$ref": "#/$defs/policy" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "started_at": { "$ref": "#/$defs/timestamp" },
+    "ended_at": { "$ref": "#/$defs/timestamp" },
+    "summary": { "$ref": "#/$defs/summary" },
+    "events": {
+      "type": "array",
+      "description": "Ordered oldest-first. Append-only; never reordered after the fact.",
+      "items": { "$ref": "#/$defs/event" }
+    },
+    "signature": {
+      "type": "string",
+      "description": "Absent means unsigned, not omitted. HMAC proves nothing to a party without the key - see spec/provenance.md section 6.",
+      "pattern": "^(hmac-sha256|ed25519):[0-9a-f]+$"
+    }
+  },
+
+  "$defs": {
+    "timestamp": {
+      "type": "string",
+      "description": "RFC 3339 with a timezone offset. A naive timestamp in an audit record is not evidence of when anything happened.",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+    },
+
+    "principalSet": {
+      "description": "Either the universe, or a sorted set of names. '*' and ['*'] are different things.",
+      "oneOf": [
+        { "const": "*" },
+        { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+      ]
+    },
+
+    "label": {
+      "type": "object",
+      "required": ["readers", "endorsers", "purposes"],
+      "additionalProperties": false,
+      "properties": {
+        "readers": { "$ref": "#/$defs/principalSet" },
+        "endorsers": { "$ref": "#/$defs/principalSet" },
+        "purposes": { "$ref": "#/$defs/principalSet" }
+      }
+    },
+
+    "policy": {
+      "type": "object",
+      "required": ["name", "version", "fingerprint"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "integer", "minimum": 0 },
+        "fingerprint": {
+          "type": "string",
+          "description": "Over the effective policy, not the source text.",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+
+    "summary": {
+      "type": "object",
+      "required": ["sources_read", "declassifications", "consents", "allowed", "denied"],
+      "additionalProperties": false,
+      "properties": {
+        "sources_read": { "type": "integer", "minimum": 0 },
+        "declassifications": { "type": "integer", "minimum": 0 },
+        "consents": { "type": "integer", "minimum": 0 },
+        "allowed": { "type": "integer", "minimum": 0 },
+        "denied": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "event": {
+      "type": "object",
+      "required": ["kind", "at"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["read", "join", "declassify", "consent", "allow", "deny"]
+        },
+        "at": { "$ref": "#/$defs/timestamp" }
+      },
+      "allOf": [
+        { "if": { "properties": { "kind": { "const": "read" } } }, "then": { "$ref": "#/$defs/readEvent" } },
+        { "if": { "properties": { "kind": { "const": "join" } } }, "then": { "$ref": "#/$defs/joinEvent" } },
+        { "if": { "properties": { "kind": { "const": "declassify" } } }, "then": { "$ref": "#/$defs/declassifyEvent" } },
+        { "if": { "properties": { "kind": { "const": "consent" } } }, "then": { "$ref": "#/$defs/consentEvent" } },
+        { "if": { "properties": { "kind": { "const": "allow" } } }, "then": { "$ref": "#/$defs/allowEvent" } },
+        { "if": { "properties": { "kind": { "const": "deny" } } }, "then": { "$ref": "#/$defs/denyEvent" } }
+      ]
+    },
+
+    "readEvent": {
+      "required": ["source", "label"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {}, "at": {},
+        "source": { "type": "string", "minLength": 1 },
+        "label": { "$ref": "#/$defs/label" }
+      }
+    },
+
+    "joinEvent": {
+      "required": ["site", "inputs", "result"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {}, "at": {},
+        "site": { "type": "string", "minLength": 1 },
+        "inputs": {
+          "type": "array",
+          "description": "Origin identifiers, never values.",
+          "items": { "type": "string" }
+        },
+        "result": { "$ref": "#/$defs/label" }
+      }
+    },
+
+    "declassifyEvent": {
+      "required": ["declassifier", "before", "after"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {}, "at": {},
+        "declassifier": { "type": "string", "minLength": 1 },
+        "before": { "$ref": "#/$defs/label" },
+        "after": { "$ref": "#/$defs/label" },
+        "consent_from": { "type": ["string", "null"] }
+      }
+    },
+
+    "consentEvent": {
+      "required": ["principal", "granted", "context"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {}, "at": {},
+        "principal": { "type": "string", "minLength": 1 },
+        "granted": { "type": "boolean" },
+        "granted_by": {
+          "type": ["string", "null"],
+          "description": "Who actually decided. Not always the principal whose consent was required."
+        },
+        "context": { "type": "string", "minLength": 1 }
+      }
+    },
+
+    "allowEvent": {
+      "required": ["sink", "label"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {}, "at": {},
+        "sink": { "type": "string", "minLength": 1 },
+        "label": { "$ref": "#/$defs/label" }
+      }
+    },
+
+    "denyEvent": {
+      "required": ["sink", "label", "reasons"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {}, "at": {},
+        "sink": { "type": "string", "minLength": 1 },
+        "label": { "$ref": "#/$defs/label" },
+        "reasons": {
+          "type": "array",
+          "description": "Every failing check, not only the first.",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}
