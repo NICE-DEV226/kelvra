@@ -36,7 +36,12 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
+      - run: pip install -e .
       - run: python examples/support_agent/demo.py
+      - name: Check every policy in the repo
+        # Dogfooding. A policy checker that does not run against this
+        # project's own policies is not a checker anyone should trust.
+        run: kelvra check $(git ls-files '*.klv')
 
   no-internal-docs:
     # docs/ holds internal working notes that must never be published.

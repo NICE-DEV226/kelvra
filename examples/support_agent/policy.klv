@@ -8,7 +8,7 @@
 policy SupportAgent
 version 1
 
-principal customer, support_team, reviewer
+principal customer, support_team, reviewer, model_provider
 purpose   support
 
 
@@ -32,8 +32,12 @@ source crm.customer_record
 # Sinks -- what each exit accepts.
 # ---------------------------------------------------------------------------
 
+# A model provider is a sink like any other. Data sent to it has left the
+# boundary -- see spec/threat-model.md section 3, adversary A5. Naming the
+# provider as a principal makes sharing with it an explicit decision rather
+# than a side effect of calling the model.
 sink llm.openai
-    accepts public                   # a model provider is a sink like any other
+    accepts confidential(model_provider)
 
 sink slack.support_channel
     accepts confidential(support_team)
@@ -59,4 +63,11 @@ declassify pii_redaction
 endorse human_review
     from untrusted
     to   endorsed(reviewer)
+    audit always
+
+# Sending data to a remote model is a sharing decision, and it is recorded as
+# one. Kelvra cannot police what the provider does with it afterwards.
+declassify share_with_model
+    from confidential(customer)
+    to   confidential(model_provider)
     audit always
