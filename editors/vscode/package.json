@@ -1,0 +1,32 @@
+{
+  "name": "kelvra-klv",
+  "displayName": "Kelvra policy (.klv)",
+  "description": "Syntax highlighting for Kelvra policy files. Highlighting only -- there is no parser, so nothing here validates a policy.",
+  "version": "0.1.0",
+  "publisher": "kelvra",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NICE-DEV226/kelvra.git",
+    "directory": "editors/vscode"
+  },
+  "engines": { "vscode": "^1.75.0" },
+  "categories": ["Programming Languages"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "klv",
+        "aliases": ["Kelvra policy", "klv"],
+        "extensions": [".klv"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "klv",
+        "scopeName": "source.klv",
+        "path": "./syntaxes/klv.tmLanguage.json"
+      }
+    ]
+  }
+}

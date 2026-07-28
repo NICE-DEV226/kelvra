@@ -1,0 +1,69 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Kelvra policy",
+  "scopeName": "source.klv",
+  "fileTypes": ["klv"],
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#declaration" },
+    { "include": "#directive" },
+    { "include": "#constructor" },
+    { "include": "#constant" },
+    { "include": "#number" },
+    { "include": "#punctuation" }
+  ],
+  "repository": {
+    "comment": {
+      "match": "#.*$",
+      "name": "comment.line.number-sign.klv"
+    },
+
+    "declaration": {
+      "comment": "Top-level declarations. The name that follows is what the rest of the policy refers to.",
+      "match": "^\\s*\\b(policy|version|principal|purpose|source|sink|declassify|endorse)\\b(?:\\s+([A-Za-z_][\\w.]*))?",
+      "captures": {
+        "1": { "name": "keyword.control.declaration.klv" },
+        "2": { "name": "entity.name.type.klv" }
+      }
+    },
+
+    "directive": {
+      "comment": "Clauses inside a declaration block.",
+      "match": "\\b(accepts|requires|integrity|from|to|for|audit)\\b",
+      "name": "keyword.other.directive.klv"
+    },
+
+    "constructor": {
+      "comment": "Label constructors. The principals they enclose are the operands of the lattice.",
+      "begin": "\\b(confidential|endorsed|consent)\\b\\s*(\\()",
+      "beginCaptures": {
+        "1": { "name": "support.function.label.klv" },
+        "2": { "name": "punctuation.section.parens.begin.klv" }
+      },
+      "end": "\\)",
+      "endCaptures": {
+        "0": { "name": "punctuation.section.parens.end.klv" }
+      },
+      "patterns": [
+        { "match": "[A-Za-z_]\\w*", "name": "variable.parameter.principal.klv" },
+        { "match": ",", "name": "punctuation.separator.klv" }
+      ]
+    },
+
+    "constant": {
+      "comment": "Lattice extremes and audit modes. public and trusted are NOT synonyms -- see spec/labels.md section 2.",
+      "match": "\\b(public|untrusted|trusted|always|never)\\b",
+      "name": "constant.language.klv"
+    },
+
+    "number": {
+      "match": "\\b\\d+\\b",
+      "name": "constant.numeric.klv"
+    },
+
+    "punctuation": {
+      "match": "[(),]",
+      "name": "punctuation.separator.klv"
+    }
+  }
+}

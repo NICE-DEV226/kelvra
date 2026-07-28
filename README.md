@@ -24,7 +24,8 @@
 </p>
 
 <p align="center">
-  <img alt="status" src="https://img.shields.io/badge/status-specification%20stage-orange">
+  <a href="https://github.com/NICE-DEV226/kelvra/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/NICE-DEV226/kelvra/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="status" src="https://img.shields.io/badge/status-early-orange">
   <img alt="license" src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue">
   <img alt="scope" src="https://img.shields.io/badge/scope-information%20flow%20control-2b6cb0">
 </p>
@@ -33,15 +34,18 @@
 
 ## Status
 
-**Kelvra is at the specification stage. There is no implementation yet.**
+**Early. The label model works and is tested; nothing else is built.**
 
-This repository currently publishes:
+What exists:
 
+- the [label model specification](spec/labels.md) — the algebra and the flow rule, written to be implemented without reading the code,
 - the [threat model](spec/threat-model.md) — who this defends against, and explicitly who it does not,
 - the [known limitations](LIMITATIONS.md) — what is unbuilt, unverified, or unresolved,
-- the design reasoning behind both.
+- a reference implementation of the lattice, propagation and provenance record, with the specification's worked examples executed as tests.
 
-If you are looking for something to `pip install`, it does not exist. If you are interested in how agent data flows should be declared and audited, and want to push back on the design before it hardens, you are in the right place.
+What does not exist: the `.klv` parser, the MCP adapter, OpenTelemetry emission, and any deployment anyone should rely on. The policy in [the example](examples/support_agent/) is written in Python because the parser is not built yet.
+
+There is nothing to `pip install` from an index. If you want to argue with the design before it hardens, now is when that is worth most.
 
 ## The problem
 
@@ -117,7 +121,7 @@ sink crm.write
 
 declassify pii_redaction
     from confidential(customer)
-    to   confidential(support_team)
+    to   confidential(customer, support_team)   # widens the reader set
     audit always
 
 endorse human_review
