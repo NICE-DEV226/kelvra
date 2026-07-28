@@ -156,7 +156,7 @@ class Ledger:
         ]
         declass = self.of_kind("declassify")
         if declass:
-            lines.append(f"declassified via:")
+            lines.append("declassified via:")
             for e in declass:
                 lines.append(f"           - {e.detail['declassifier']}")
         else:
