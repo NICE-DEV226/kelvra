@@ -1,0 +1,34 @@
+# ---------------------------------------------------------------------------
+# Internal working documents -- NEVER published.
+#
+# docs/ holds the project's internal notes: recognised biases, unvalidated
+# assumptions, competitor analysis, and claims this project made that turned
+# out to be wrong. Deliberately frank, deliberately private.
+#
+# The public counterparts live in spec/ and LIMITATIONS.md.
+# ---------------------------------------------------------------------------
+/docs/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Provenance records produced by local runs -- may contain real labels
+*.provenance.json
+/runs/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

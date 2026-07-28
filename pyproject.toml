@@ -1,0 +1,52 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kelvra"
+version = "0.1.0"
+description = "Declare what an AI agent may know, prove what it did. Information flow control for LLM agent pipelines."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT OR Apache-2.0" }
+authors = [{ name = "Azaël Wend-panga SAWADOGO" }]
+keywords = [
+    "information-flow-control",
+    "ai-agents",
+    "prompt-injection",
+    "privacy",
+    "audit",
+    "mcp",
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Security",
+    "Programming Language :: Python :: 3",
+]
+
+# The core has no third-party dependencies, on purpose. The MCP Python SDK
+# ships its stable v2 on 2026-07-28 alongside a new specification release;
+# binding the core to a dependency that turns over on that date would buy an
+# immediate rewrite. MCP stays behind an optional adapter.
+dependencies = []
+
+[project.optional-dependencies]
+mcp = ["mcp>=2.0.0"]
+otel = ["opentelemetry-api>=1.42.0", "opentelemetry-sdk>=1.42.0"]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.urls]
+Homepage = "https://github.com/NICE-DEV226/kelvra"
+Issues = "https://github.com/NICE-DEV226/kelvra/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kelvra"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]

@@ -117,7 +117,7 @@ sink crm.write
 
 declassify pii_redaction
     from confidential(customer)
-    to   confidential(support_team)
+    to   confidential(customer, support_team)   # widens the reader set
     audit always
 
 endorse human_review
