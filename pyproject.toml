@@ -34,7 +34,10 @@ dependencies = []
 [project.optional-dependencies]
 mcp = ["mcp>=2.0.0"]
 otel = ["opentelemetry-api>=1.42.0", "opentelemetry-sdk>=1.42.0"]
-dev = ["pytest>=8.0", "ruff>=0.6"]
+# Pinned exactly. An unpinned linter breaks CI on a day nobody changed
+# anything, because its default rule set moved underneath the build. Bump it
+# deliberately, in its own commit, with the findings it produces.
+dev = ["pytest>=8.0,<9", "ruff==0.16.0"]
 
 [project.urls]
 Homepage = "https://github.com/NICE-DEV226/kelvra"
@@ -50,3 +53,18 @@ pythonpath = ["src"]
 [tool.ruff]
 line-length = 100
 src = ["src", "tests"]
+target-version = "py310"
+
+[tool.ruff.lint]
+# Chosen explicitly rather than inherited from whichever ruff happens to
+# install. Ruff's defaults expand between releases; a rule set that is not
+# written down is a rule set that changes without a commit.
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # import ordering
+    "UP",  # pyupgrade
+    "B",   # bugbear
+    "RUF", # ruff-specific
+]

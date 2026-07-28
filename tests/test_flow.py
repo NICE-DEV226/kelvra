@@ -106,7 +106,9 @@ def test_confidential_data_cannot_reach_the_model_sink(k):
 
 def test_redaction_is_what_lets_it_out(k):
     record = k.read("crm.customer_record", {"iban": "FR76..."})
-    summary = k.model_call("agent.summarise", record, produce=lambda r: "customer asked about billing")
+    summary = k.model_call(
+        "agent.summarise", record, produce=lambda _: "customer asked about billing"
+    )
     safe = k.declassify("pii_redaction", summary, transform=lambda s: s)
     assert k.emit("slack.support_channel", safe) == "customer asked about billing"
 
@@ -197,7 +199,7 @@ def test_denials_are_recorded_not_just_raised(k):
 
     record = k.record()
     assert record["summary"]["denied"] == 1
-    denial = [e for e in record["events"] if e["kind"] == "deny"][0]
+    denial = next(e for e in record["events"] if e["kind"] == "deny")
     assert denial["sink"] == "crm.write"
     assert denial["reasons"]
 
@@ -229,7 +231,7 @@ def test_consent_refusal_blocks_the_declassification():
         k.declassify("human_review", email)
 
     record = k.record()
-    consent = [e for e in record["events"] if e["kind"] == "consent"][0]
+    consent = next(e for e in record["events"] if e["kind"] == "consent")
     assert consent["granted"] is False
 
 

@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from kelvra import (  # noqa: E402
+from kelvra import (
     ConsentRefused,
     Denied,
     Kelvra,
@@ -42,7 +42,10 @@ policy.add_source(
     Source("inbox.imap", Label.confidential("customer", for_purpose="support").untrusted())
 )
 policy.add_source(
-    Source("crm.customer_record", Label.confidential("customer", "support_team", for_purpose="support"))
+    Source(
+        "crm.customer_record",
+        Label.confidential("customer", "support_team", for_purpose="support"),
+    )
 )
 
 policy.add_sink(Sink("llm.openai", audience=PrincipalSet.all()))
@@ -116,10 +119,16 @@ def main() -> int:
         "agent.summarise", record, produce=lambda r: f"{r['name']} asked about an order"
     )
     shareable = k.declassify("pii_redaction", summary)
-    attempt("post the redacted summary to support", lambda: k.emit("slack.support_channel", shareable))
+    attempt(
+        "post the redacted summary to support",
+        lambda: k.emit("slack.support_channel", shareable),
+    )
 
     reviewed = k.declassify("human_review", k.declassify("pii_redaction", plan))
-    attempt("write to the CRM after redaction + human review", lambda: k.emit("crm.write", reviewed))
+    attempt(
+        "write to the CRM after redaction + human review",
+        lambda: k.emit("crm.write", reviewed),
+    )
 
     rule("6. What the auditor receives")
     print(k.report())

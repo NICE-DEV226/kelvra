@@ -19,8 +19,8 @@ integrity violation, not a confidentiality one. See spec/threat-model.md.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 
 @dataclass(frozen=True)
@@ -182,7 +182,10 @@ class Label:
     # -- display ---------------------------------------------------------
 
     def __repr__(self) -> str:
-        return f"Label(readers={self.readers!r} endorsers={self.endorsers!r} purposes={self.purposes!r})"
+        return (
+            f"Label(readers={self.readers!r} "
+            f"endorsers={self.endorsers!r} purposes={self.purposes!r})"
+        )
 
     def describe(self) -> str:
         bits = []
