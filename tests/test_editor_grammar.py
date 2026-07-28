@@ -96,6 +96,19 @@ def test_the_example_does_not_spell_one_concept_two_ways():
     assert "endorsement" not in constructors, "use endorsed(...), not endorsement(...)"
 
 
+def test_grammar_knows_every_block_keyword_the_parser_accepts(grammar):
+    """Closes the loop: the grammar is checked against the parser, not the example.
+
+    Until the grammar is generated from the parser's tokens, this is what
+    stops a keyword from being accepted by the parser and left grey in the
+    editor -- which reads as a typo to whoever wrote it.
+    """
+    from kelvra.klv import BLOCK_KEYWORDS
+
+    unknown = set(BLOCK_KEYWORDS) - grammar_vocabulary(grammar)
+    assert not unknown, f"the parser accepts {sorted(unknown)}; the grammar does not colour them"
+
+
 def test_extension_declares_the_grammar_it_ships(grammar):
     package = json.loads((VSCODE / "package.json").read_text(encoding="utf-8"))
     contributed = package["contributes"]["grammars"][0]

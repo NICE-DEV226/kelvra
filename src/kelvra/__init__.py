@@ -9,6 +9,7 @@ The core has no third-party dependencies. Adapters that bind it to MCP or
 to a framework live under ``kelvra.adapters`` and carry their own extras.
 """
 
+from .klv import KlvError, parse, parse_file, parse_with_warnings
 from .labels import PUBLIC, SECRET, Label, PrincipalSet, join_all
 from .policy import (
     Decision,
@@ -33,6 +34,7 @@ __all__ = [
     "Declassifier",
     "Denied",
     "Kelvra",
+    "KlvError",
     "Label",
     "Ledger",
     "Policy",
@@ -45,6 +47,9 @@ __all__ = [
     "declassify_to",
     "endorse_as",
     "join_all",
+    "parse",
+    "parse_file",
+    "parse_with_warnings",
     "sign",
     "verify",
 ]
