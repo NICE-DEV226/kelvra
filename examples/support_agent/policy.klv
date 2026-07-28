@@ -1,11 +1,8 @@
-# The policy enforced by demo.py, in the surface syntax.
+# The policy enforced by demo.py. This file is what actually runs -- demo.py
+# parses it rather than rebuilding the same policy in Python, so the syntax
+# shown in the README and the policy under test cannot drift apart.
 #
-# NOT PARSED YET. There is no .klv parser -- demo.py builds this same policy
-# programmatically in Python. This file exists so the syntax can be argued
-# with before it is implemented, and so the two cannot silently diverge:
-# tests/test_example_policy.py checks that this file and demo.py describe the
-# same thing.
-#
+# Grammar:   ../../spec/policy-language.md
 # Semantics: ../../spec/labels.md
 
 policy SupportAgent
@@ -44,6 +41,7 @@ sink slack.support_channel
 sink crm.write
     accepts confidential(customer, support_team)
     requires endorsed(reviewer)
+    requires consent(customer)     # a human decision, bound to the data
 
 
 # ---------------------------------------------------------------------------

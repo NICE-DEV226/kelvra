@@ -14,6 +14,14 @@ an exact version.
 - **`spec/labels.md`** — the label algebra and flow rule, written to be
   implemented without reading the code. Includes a conformance checklist and
   an explicit list of open questions.
+- **`spec/policy-language.md`** and a parser for `.klv`. Hand-written and
+  dependency-free: the grammar is line-oriented with no expressions, and the
+  diagnostics are the product — a generic "unexpected token" would fail
+  exactly the non-programmer this language exists for. Every error carries a
+  line, the offending text, and where possible what to do instead.
+  `examples/support_agent/demo.py` now parses `policy.klv` instead of
+  rebuilding the same policy in Python, so the advertised syntax and the
+  enforced policy are one artifact rather than two kept in step by hand.
 - **`spec/provenance.md`** and **`spec/provenance.schema.json`** — the audit
   record, specified so it can be produced without reading the code. Adds two
   rules that were not in the implementation: a record must never embed the
@@ -56,6 +64,11 @@ an exact version.
   describing something other than what ran. Sessions now seal the policy they
   govern; the caller's object stays mutable and simply no longer reaches the
   run. Found by writing the specification, not by reading the code.
+- **The README and the example disagreed on the language.** The README wrote
+  `requires integrity trusted`, the example wrote `requires endorsed(...)`.
+  The latter wins and the former is removed: "trusted" alone does not say
+  trusted *by whom*, and an audience-facing file should not carry that
+  ambiguity. The parser rejects it with the replacement in the hint.
 - The `.klv` example in the README did not type-check.
   `declassify pii_redaction from confidential(customer) to
   confidential(support_team)` moves sideways rather than widening under

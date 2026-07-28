@@ -18,48 +18,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from kelvra import (
-    ConsentRefused,
-    Denied,
-    Kelvra,
-    Label,
-    Policy,
-    PrincipalSet,
-    Sink,
-    Source,
-    declassify_to,
-    endorse_as,
-)
+from kelvra import ConsentRefused, Denied, Kelvra
+from kelvra.klv import parse_file
 
 # --------------------------------------------------------------------------
-# The policy. This is what a .klv file will compile to once the parser
-# exists; for now it is written by hand, deliberately.
+# The policy is read from policy.klv. It used to be built here in Python as
+# well, which meant the syntax the README advertises and the policy that
+# actually ran were two things kept in step by hand. They are one thing now.
 # --------------------------------------------------------------------------
 
-policy = Policy(name="SupportAgent", version=1)
-
-policy.add_source(
-    Source("inbox.imap", Label.confidential("customer", for_purpose="support").untrusted())
-)
-policy.add_source(
-    Source(
-        "crm.customer_record",
-        Label.confidential("customer", "support_team", for_purpose="support"),
-    )
-)
-
-policy.add_sink(Sink("llm.openai", audience=PrincipalSet.all()))
-policy.add_sink(Sink("slack.support_channel", audience=PrincipalSet.of("support_team")))
-policy.add_sink(
-    Sink(
-        "crm.write",
-        audience=PrincipalSet.of("customer", "support_team"),
-        requires_endorsement=PrincipalSet.of("reviewer"),
-    )
-)
-
-policy.add_declassifier(declassify_to("pii_redaction", "customer", "support_team"))
-policy.add_declassifier(endorse_as("human_review", "reviewer"))
+policy = parse_file(Path(__file__).with_name("policy.klv"))
 
 
 # --------------------------------------------------------------------------

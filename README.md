@@ -34,17 +34,18 @@
 
 ## Status
 
-**Early. The label model works and is tested; nothing else is built.**
+**Early. Policies parse and enforce, and produce an audit record. Nothing is deployable.**
 
 What exists:
 
-- the [label model specification](spec/labels.md) — the algebra and the flow rule, written to be implemented without reading the code,
-- the [provenance record specification](spec/provenance.md) and its [JSON schema](spec/provenance.schema.json) — the audit artifact, including its mapping onto OpenTelemetry GenAI spans,
+- the [label model](spec/labels.md) — the algebra and the flow rule, written to be implemented without reading the code,
+- the [`.klv` language](spec/policy-language.md) — grammar, semantics, and the diagnostic each malformed case must produce,
+- the [provenance record](spec/provenance.md) and its [JSON schema](spec/provenance.schema.json) — the audit artifact, including its mapping onto OpenTelemetry GenAI spans,
 - the [threat model](spec/threat-model.md) — who this defends against, and explicitly who it does not,
 - the [known limitations](LIMITATIONS.md) — what is unbuilt, unverified, or unresolved,
-- a reference implementation of the lattice, propagation and provenance record, with the specification's worked examples executed as tests.
+- a reference implementation with no third-party dependencies, whose test suite executes every worked example in the specifications.
 
-What does not exist: the `.klv` parser, the MCP adapter, OpenTelemetry emission, and any deployment anyone should rely on. The policy in [the example](examples/support_agent/) is written in Python because the parser is not built yet.
+What does not exist: the MCP adapter, OpenTelemetry emission, a language server, imports in `.klv`, and any deployment anyone should rely on.
 
 There is nothing to `pip install` from an index. If you want to argue with the design before it hardens, now is when that is worth most.
 
@@ -86,7 +87,7 @@ The precedent is TypeScript, which never executes anything — `tsc` erases ever
 
 ## A first look
 
-Illustrative syntax. **Not implemented, not final.**
+This parses and runs. It is [the actual policy](examples/support_agent/policy.klv) the demo enforces — not an illustration kept in step by hand. The syntax is **not final**.
 
 ```kelvra
 policy SupportAgent
@@ -115,7 +116,7 @@ sink slack.support_channel
 
 sink crm.write
     accepts confidential(customer, support_team)
-    requires integrity trusted
+    requires endorsed(reviewer)
     requires consent(customer)
 
 # ---- Declassification: the only permitted crossings ----
@@ -191,8 +192,8 @@ Threat model, label vocabulary, provenance format. On paper.
 **Phase 1 — Observation**
 Instrument an existing agent *without enforcing anything*. Label sources, propagate, emit the provenance record. This is immediately useful to a compliance team, and it produces the real flow data needed to design the language against observed behavior rather than imagined syntax.
 
-**Phase 2 — Declaration**
-The `.klv` language, its parser, and enforcement at the MCP boundary.
+**Phase 2 — Declaration** *(parser done)*
+The `.klv` language and enforcement at the MCP boundary. A language server comes before the MCP adapter: for most languages an LSP is a convenience, but here the diagnostics *are* the security tool — telling someone in their editor that a flow can never be permitted delivers the whole value proposition at authoring time, before anything runs.
 
 **Phase 3 — Standardization**
 Publish the vocabulary and record format as an implementation-independent specification, and seek a home for it. This is the phase that decides whether the project matters.
