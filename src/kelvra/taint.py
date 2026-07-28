@@ -92,13 +92,16 @@ class Kelvra:
         signing_key: bytes | None = None,
         consent: ConsentProvider = deny_all_consent,
     ) -> None:
-        self.policy = policy
+        # Sealed, not referenced. A run whose policy changed underneath it
+        # cannot be honestly attested to, and the signature would make the
+        # misleading record look authoritative. See Policy.seal.
+        self.policy = policy.seal()
         self.signing_key = signing_key if signing_key is not None else key_from_env()
         self.consent_provider = consent
         self.ledger = Ledger(
-            policy_name=policy.name,
-            policy_version=policy.version,
-            policy_fingerprint=policy.fingerprint(),
+            policy_name=self.policy.name,
+            policy_version=self.policy.version,
+            policy_fingerprint=self.policy.fingerprint(),
         )
 
     # -- entry -----------------------------------------------------------

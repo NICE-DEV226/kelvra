@@ -14,6 +14,12 @@ an exact version.
 - **`spec/labels.md`** — the label algebra and flow rule, written to be
   implemented without reading the code. Includes a conformance checklist and
   an explicit list of open questions.
+- **`spec/provenance.md`** and **`spec/provenance.schema.json`** — the audit
+  record, specified so it can be produced without reading the code. Adds two
+  rules that were not in the implementation: a record must never embed the
+  data it describes, and the governing policy must not change during a run.
+  Includes a mapping onto OpenTelemetry GenAI spans and a proposed `kelvra.*`
+  attribute set.
 - **`spec/threat-model.md`** — six adversaries, three of them explicitly out
   of scope, five target properties, six non-properties, and the trust base
   including its weakest link.
@@ -44,6 +50,12 @@ an exact version.
 
 ### Fixed
 
+- **A run could be attested to under a policy that was not the one enforced.**
+  The provenance fingerprint was captured when a session started, but the
+  policy stayed mutable, so a mid-run amendment produced a signed record
+  describing something other than what ran. Sessions now seal the policy they
+  govern; the caller's object stays mutable and simply no longer reaches the
+  run. Found by writing the specification, not by reading the code.
 - The `.klv` example in the README did not type-check.
   `declassify pii_redaction from confidential(customer) to
   confidential(support_team)` moves sideways rather than widening under
