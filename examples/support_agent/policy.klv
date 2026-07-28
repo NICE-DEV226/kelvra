@@ -1,0 +1,64 @@
+# The policy enforced by demo.py, in the surface syntax.
+#
+# NOT PARSED YET. There is no .klv parser -- demo.py builds this same policy
+# programmatically in Python. This file exists so the syntax can be argued
+# with before it is implemented, and so the two cannot silently diverge:
+# tests/test_example_policy.py checks that this file and demo.py describe the
+# same thing.
+#
+# Semantics: ../../spec/labels.md
+
+policy SupportAgent
+version 1
+
+principal customer, support_team, reviewer
+purpose   support
+
+
+# ---------------------------------------------------------------------------
+# Sources -- what enters, and what it carries.
+#
+# These labels are declarative and unverified. Getting one wrong makes
+# everything downstream correct and useless. See spec/threat-model.md section 6.
+# ---------------------------------------------------------------------------
+
+source inbox.imap
+    confidential(customer) for support
+    integrity untrusted              # arrives from outside; nobody vouches
+
+source crm.customer_record
+    confidential(customer, support_team) for support
+    integrity trusted
+
+
+# ---------------------------------------------------------------------------
+# Sinks -- what each exit accepts.
+# ---------------------------------------------------------------------------
+
+sink llm.openai
+    accepts public                   # a model provider is a sink like any other
+
+sink slack.support_channel
+    accepts confidential(support_team)
+
+sink crm.write
+    accepts confidential(customer, support_team)
+    requires endorsement(reviewer)
+
+
+# ---------------------------------------------------------------------------
+# Declassification -- the only permitted crossings.
+#
+# Kelvra does not check that pii_redaction redacts anything. It guarantees
+# this is the only declared way out, and that every use is recorded.
+# ---------------------------------------------------------------------------
+
+declassify pii_redaction
+    from confidential(customer)
+    to   confidential(customer, support_team)   # widens the reader set
+    audit always
+
+endorse human_review
+    from untrusted
+    to   endorsed(reviewer)
+    audit always

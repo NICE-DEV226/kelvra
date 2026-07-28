@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+title: "Kelvra: a policy language and audit format for information flow in LLM agent pipelines"
+message: "If you refer to Kelvra in academic work, please cite it as below. Note that it is early-stage and the label model is unstable."
+type: software
+authors:
+  - family-names: "SAWADOGO"
+    given-names: "Azaël Wend-panga"
+repository-code: "https://github.com/NICE-DEV226/kelvra"
+abstract: >-
+  Kelvra specifies a label model and provenance format for information flow
+  control in LLM agent pipelines. Labels carry three axes -- confidentiality,
+  integrity and purpose -- joined by intersection, with relaxation permitted
+  only through explicitly declared declassification. A model call is treated
+  as a total join over its inputs, which is coarse but never under-labels.
+  The intended output is a signed provenance record enumerating every
+  declassification taken and every flow denied during a run. Kelvra does not
+  implement an enforcement engine and does not claim to prevent leakage; it
+  claims that the set of points where leakage is possible is finite, declared
+  and recorded.
+keywords:
+  - information flow control
+  - AI agents
+  - prompt injection
+  - privacy
+  - audit
+license: "MIT OR Apache-2.0"
+version: "0.1.0"
