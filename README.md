@@ -141,6 +141,26 @@ Two axes matter here, not one:
 
 `declassify` and `endorse` are the two places where something can go wrong, so they are the two places that get dedicated syntax and a mandatory audit entry. These are the standard terms from the IFC literature, used deliberately.
 
+### Checked before anything runs
+
+```console
+$ kelvra check policy.klv
+error[unsatisfiable-sink] sink 'crm.write': no declared source can reach this sink,
+  even after applying every declassifier
+  hint: nothing grants endorsement by reviewer; add an 'endorse' declaration that grants it
+
+warning[untrusted-reaches-sink] sink 'slack.support_channel': reachable by untrusted
+  data from 'inbox.imap', with no endorsement or consent required
+  hint: if this sink takes an action rather than just recording one, injected content
+        can drive it. Add 'requires endorsed(...)' or 'requires consent(...)'
+```
+
+The second finding is the shape of the attack, spotted at authoring time by reading the policy graph — no execution, no traffic, no incident.
+
+Every finding is **definite**: the analysis reports a problem only when no execution can avoid it, and stays silent otherwise. It is allowed to miss things; it is not allowed to invent them. A checker that cries wolf gets switched off, and a switched-off checker protects nothing. Warnings exit 0 so they never break a build by surprise; `--strict` and `--json` are there for the pipelines that want more.
+
+`kelvra explain policy.klv` prints the reachability table and names every declassifier — the complete list of places a leak is possible.
+
 ### The output that matters
 
 Each run emits a signed provenance record — flows taken, declassifications used, consents granted, and **flows denied**. Machine-readable for tooling, summarizable to one page for an auditor. For a compliance team facing a traceability obligation, this record is the product; the policy file is how you configure it.

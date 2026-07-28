@@ -14,6 +14,16 @@ an exact version.
 - **`spec/labels.md`** — the label algebra and flow rule, written to be
   implemented without reading the code. Includes a conformance checklist and
   an explicit list of open questions.
+- **Whole-policy analysis and a `kelvra` command line.** Four findings:
+  `unsatisfiable-sink` (error), `untrusted-reaches-sink`, `trapped-source`
+  and `unused-declassifier`. Built before a language server on purpose — an
+  LSP is plumbing around an analysis, and a CLI puts the analysis in someone's
+  CI today rather than in their editor next quarter. The eventual language
+  server wraps the same module and adds no checks of its own.
+
+  Every finding is definite: the analysis reports a problem only when no
+  execution can avoid it. It may miss things; it may not invent them. Warnings
+  exit 0 so they never break a build by surprise.
 - **`spec/policy-language.md`** and a parser for `.klv`. Hand-written and
   dependency-free: the grammar is line-oriented with no expressions, and the
   diagnostics are the product — a generic "unexpected token" would fail
@@ -58,6 +68,15 @@ an exact version.
 
 ### Fixed
 
+- **A model call sent data outside the boundary without any check.**
+  `model_call` joined labels and passed the values to the model, so the one
+  destination that receives everything was the one destination checked for
+  nothing. The threat model already described declaring a remote model as a
+  sink; the mechanism was written and never wired. `model_call(..., via=...)`
+  now enforces the sink before the call. Found by running the new analysis
+  against this project's own example, which reported the model sink as
+  unreachable — the symptom of a policy that described a flow the code was
+  bypassing.
 - **A run could be attested to under a policy that was not the one enforced.**
   The provenance fingerprint was captured when a session started, but the
   policy stayed mutable, so a mid-run amendment produced a signed record

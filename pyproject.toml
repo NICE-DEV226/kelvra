@@ -39,6 +39,9 @@ otel = ["opentelemetry-api>=1.42.0", "opentelemetry-sdk>=1.42.0"]
 # deliberately, in its own commit, with the findings it produces.
 dev = ["pytest>=8.0,<9", "ruff==0.16.0", "jsonschema>=4.20"]
 
+[project.scripts]
+kelvra = "kelvra.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/NICE-DEV226/kelvra"
 Issues = "https://github.com/NICE-DEV226/kelvra/issues"
