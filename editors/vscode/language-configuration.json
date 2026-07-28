@@ -1,0 +1,18 @@
+{
+  "comments": {
+    "lineComment": "#"
+  },
+  "brackets": [["(", ")"]],
+  "autoClosingPairs": [{ "open": "(", "close": ")" }],
+  "surroundingPairs": [["(", ")"]],
+  "indentationRules": {
+    "increaseIndentPattern": "^\\s*(policy|source|sink|declassify|endorse)\\b.*$",
+    "decreaseIndentPattern": "^\\s*$"
+  },
+  "folding": {
+    "markers": {
+      "start": "^# -{10,}",
+      "end": "^\\s*$"
+    }
+  }
+}

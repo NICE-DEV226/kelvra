@@ -43,7 +43,7 @@ sink slack.support_channel
 
 sink crm.write
     accepts confidential(customer, support_team)
-    requires endorsement(reviewer)
+    requires endorsed(reviewer)
 
 
 # ---------------------------------------------------------------------------

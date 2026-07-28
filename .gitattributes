@@ -1,0 +1,20 @@
+# GitHub does not know what a .klv file is, and cannot be made to until the
+# language sees real use -- Linguist only accepts new languages with evidence
+# of adoption across many repositories. Until then, this override borrows an
+# existing grammar so policy files render with some colour instead of as a
+# grey block, which is what an unrecognised extension looks like.
+#
+# The cost: GitHub counts .klv files as INI in the repository language stats.
+# Acceptable for now. Remove this line the day Kelvra is in Linguist.
+#
+# Locally, editors/vscode/ ships a real TextMate grammar for .klv.
+*.klv linguist-language=INI
+
+# Documentation, not code -- keep it out of the language stats.
+*.md linguist-documentation
+
+# Normalise line endings. The repo is developed on Windows and tested on
+# Linux CI; without this the two disagree on every file.
+* text=auto eol=lf
+*.png binary
+*.svg text eol=lf
