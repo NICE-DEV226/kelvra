@@ -9,6 +9,11 @@
 # ---------------------------------------------------------------------------
 /docs/
 
+# A separate project of the author's that lives in this working directory.
+# Its own repository is elsewhere; a blanket `git add -A` once committed a
+# gitlink to it, which is why it is named here rather than merely avoided.
+/project-argus/
+
 # Python
 __pycache__/
 *.py[cod]

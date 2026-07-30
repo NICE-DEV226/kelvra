@@ -54,17 +54,33 @@ jobs:
         # project's own policies is not a checker anyone should trust.
         run: kelvra check $(git ls-files '*.klv')
 
-  no-internal-docs:
-    # docs/ holds internal working notes that must never be published.
-    # A gitignore entry is a convention; this is the check.
+  nothing-foreign-tracked:
+    # Some things in the working directory must never be published: internal
+    # notes, and a separate project of the author's that lives alongside this
+    # one. A .gitignore entry is a convention; this is the check.
+    #
+    # It exists because a blanket `git add -A` has twice taken something it
+    # should not have. Each entry here was added after the fact, which is the
+    # wrong order -- but a named guard beats remembering.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Fail if internal docs were committed
+      - name: Fail if anything foreign was committed
         run: |
-          if git ls-files --error-unmatch docs/ >/dev/null 2>&1; then
-            echo "::error::docs/ is tracked. It holds internal notes and must stay private."
-            git ls-files docs/
-            exit 1
+          status=0
+          for path in docs project-argus; do
+            if git ls-files --error-unmatch "$path" >/dev/null 2>&1; then
+              echo "::error::$path is tracked and must not be published."
+              git ls-files "$path" | head -20
+              status=1
+            fi
+          done
+          # A gitlink (mode 160000) is an embedded repository committed by
+          # accident. There are no intentional submodules in this project.
+          if git ls-files -s | grep -q '^160000'; then
+            echo "::error::an embedded git repository is tracked:"
+            git ls-files -s | grep '^160000'
+            status=1
           fi
-          echo "OK - no internal docs tracked."
+          [ "$status" -eq 0 ] && echo "OK - nothing foreign tracked."
+          exit "$status"
