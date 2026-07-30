@@ -37,6 +37,12 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install -e .
+      - name: Smoke-test the installed command
+        # Installs differ from `python -m`: this is what catches a broken
+        # console script or an exit code that only misbehaves once packaged.
+        run: |
+          kelvra --version
+          kelvra --help > /dev/null
       - run: python examples/support_agent/demo.py
       - name: Check every policy in the repo
         # Dogfooding. A policy checker that does not run against this

@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from kelvra.cli import EXIT_FINDINGS, EXIT_OK, main
+from kelvra.cli import EXIT_FINDINGS, EXIT_OK, EXIT_USAGE, main
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples" / "support_agent" / "policy.klv"
 
@@ -161,11 +161,31 @@ def test_explain_on_an_unparseable_file_fails_cleanly(write, capsys):
 
 
 def test_no_subcommand_is_a_usage_error():
-    assert run() != EXIT_OK
+    assert run() == EXIT_USAGE
 
 
 def test_version_is_reported(capsys):
     from kelvra import __version__
 
-    main(["--version"])
+    assert run("--version") == EXIT_OK
     assert __version__ in capsys.readouterr().out
+
+
+def test_help_exits_zero(capsys):
+    """`--help` and `--version` succeed; only a real misuse exits non-zero.
+
+    This asserts the exit code, not the output. An earlier version of this
+    test checked only what was printed, and missed that both exited 2 --
+    argparse raises SystemExit(0) for these, and `code or EXIT_USAGE`
+    silently turned that into a failure because zero is falsy.
+    """
+    assert run("--help") == EXIT_OK
+    assert "check" in capsys.readouterr().out
+
+
+def test_an_unknown_subcommand_is_a_usage_error():
+    assert run("frobnicate") == EXIT_USAGE
+
+
+def test_check_without_a_file_is_a_usage_error():
+    assert run("check") == EXIT_USAGE

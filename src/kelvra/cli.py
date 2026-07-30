@@ -178,7 +178,13 @@ def main(argv: list[str] | None = None) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit as exit_:
-        return int(exit_.code or EXIT_USAGE)
+        # argparse exits 0 for --help and --version, 2 for a usage error.
+        # Do not collapse that with `or`: zero is falsy, so `code or EXIT_USAGE`
+        # turns a successful --version into a failure, which is exactly the
+        # kind of thing a CI smoke test trips over.
+        if exit_.code is None:
+            return EXIT_OK
+        return int(exit_.code)
     return int(args.func(args))
 
 
