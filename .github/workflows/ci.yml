@@ -31,7 +31,7 @@ jobs:
       - name: Test
         run: python -m pytest -q
       - name: Lint
-        run: python -m ruff check src tests examples
+        run: python -m ruff check src tests examples evaluation
 
   demo:
     # The demo is documentation that can rot. Run it so it cannot.
@@ -49,6 +49,11 @@ jobs:
           kelvra --version
           kelvra --help > /dev/null
       - run: python examples/support_agent/demo.py
+      - name: Adversarial evaluation
+        # Fails on a leak or a false positive. The point of running it here is
+        # that a regression in the label model shows up as an attack getting
+        # through, not as a unit test turning red in the abstract.
+        run: python evaluation/run.py
       - name: Check every policy in the repo
         # Dogfooding. A policy checker that does not run against this
         # project's own policies is not a checker anyone should trust.

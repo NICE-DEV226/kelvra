@@ -28,6 +28,15 @@ For what Kelvra does not *defend against*, see the [threat model](spec/threat-mo
 
 ## Unvalidated assumptions
 
+**The adversarial evaluation is a floor, not a measurement.** There is one now
+([evaluation/](evaluation/)) — six attacks from a real corpus, five of them
+expressible as a data flow and all five contained, no false positives on three
+benign controls. But the agent in it is modelled as fully compromised rather
+than driven by a real model, so it measures containment and not utility under
+attack. It produces no AgentDojo-comparable number, and it will not until there
+is a real integration to measure. The policy and the harness were also written
+by the same person.
+
 **No user has ever been asked.** No conversation with a developer building agents, a CISO, a DPO, or an auditor. The claim that a provenance record is the artifact compliance teams want is a hypothesis held by people who have never sold to a compliance team.
 
 **"A spec beats an engine" is a bet, not a result.** It rests on historical analogies — SQL, TypeScript, OpenTelemetry, SPIFFE. Analogies are reassuring and prove nothing.

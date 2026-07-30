@@ -14,6 +14,22 @@ an exact version.
 - **`spec/labels.md`** — the label algebra and flow rule, written to be
   implemented without reading the code. Includes a conformance checklist and
   an explicit list of open questions.
+- **An adversarial evaluation** (`evaluation/`), against a corpus of real
+  indirect prompt injections. Six attacks: five expressible as a data flow and
+  all five contained, by three different mechanisms — default deny on an
+  undeclared sink, the confidentiality axis, the integrity axis. No false
+  positives on three benign controls. One attack, system prompt disclosure,
+  gets through and cannot be stopped: it reaches no tool, so nothing observes
+  it. That is non-property N1, written before the evaluation existed.
+
+  The agent is modelled as fully compromised — it does exactly what each
+  injection asked. That isolates the structural guarantee from anything about
+  the model, and it is the hardest case; it also means this measures
+  containment and not utility, so it produces no AgentDojo-comparable number.
+
+  Notable: the obfuscated attack, which needed a whole normalisation stage to
+  catch in the corpus's original project, requires nothing here. Kelvra never
+  reads the text.
 - **A language server (`kelvra lsp`).** Diagnostics under the offending
   line as you type, hover that answers *who can reach this sink*, a document
   outline, and completion of declared principals. One protocol, every editor

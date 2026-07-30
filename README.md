@@ -43,7 +43,8 @@ What exists:
 - the [provenance record](spec/provenance.md) and its [JSON schema](spec/provenance.schema.json) — the audit artifact, including its mapping onto OpenTelemetry GenAI spans,
 - the [threat model](spec/threat-model.md) — who this defends against, and explicitly who it does not,
 - the [known limitations](LIMITATIONS.md) — what is unbuilt, unverified, or unresolved,
-- a reference implementation with no third-party dependencies, whose test suite executes every worked example in the specifications.
+- a reference implementation with no third-party dependencies, whose test suite executes every worked example in the specifications,
+- an [adversarial evaluation](evaluation/) against a corpus of real indirect prompt injections — six attacks, five expressible as a data flow and all five contained, no false positives on three benign controls, and one attack it explicitly cannot see.
 
 What does not exist: the MCP adapter, OpenTelemetry emission, imports in `.klv`, and any deployment anyone should rely on.
 
@@ -213,9 +214,11 @@ Kelvra does **not** claim an agent "cannot leak." Published defences in this spa
 
 > In an agent governed by Kelvra, there is a **finite, enumerated** set of points where sensitive data can leave. Every one is named, every crossing is logged, and those that require it are gated on explicit consent. There is no undeclared path.
 
+The [evaluation](evaluation/) is where that claim meets an actual corpus, including one attack it demonstrably cannot see.
+
 Specifically, Kelvra does not:
 
-- verify what a language model produces — if an authorized summary contains something it shouldn't, Kelvra will not see it;
+- verify what a language model produces — if an authorized summary contains something it shouldn't, Kelvra will not see it. One attack in the corpus is exactly this, and it gets through;
 - guarantee that a redaction function actually redacts — only that it is the sole declared crossing, and that its use is recorded;
 - detect covert channels (timing, output length, steganographic encoding);
 - stop a hostile developer — someone who declassifies everything gets a valid program, one whose policy file shows in plain text that it declassifies everything;

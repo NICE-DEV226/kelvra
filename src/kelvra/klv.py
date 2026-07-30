@@ -663,7 +663,13 @@ class _State:
     # -- post-parse checks -----------------------------------------------
 
     def check_unused(self) -> None:
+        # Point at the line that declared the name. "line 0" is not a location,
+        # and an editor cannot underline it.
         for name in sorted(self.principals - self.used_principals):
-            self.warnings.add(f"principal {name!r} is declared but never used", 0)
+            self.warnings.add(
+                f"principal {name!r} is declared but never used", self.name_lines.get(name, 1)
+            )
         for name in sorted(self.purposes - self.used_purposes):
-            self.warnings.add(f"purpose {name!r} is declared but never used", 0)
+            self.warnings.add(
+                f"purpose {name!r} is declared but never used", self.name_lines.get(name, 1)
+            )
