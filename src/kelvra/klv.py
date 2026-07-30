@@ -164,8 +164,27 @@ def parse(text: str, *, filename: str | None = None) -> Policy:
     return policy
 
 
-def parse_with_warnings(text: str, *, filename: str | None = None) -> tuple[Policy, list[str]]:
-    """Like :func:`parse`, but also returns non-fatal warnings."""
+@dataclass(frozen=True)
+class ParseResult:
+    """Everything the parser learned, not just the policy.
+
+    Tooling needs more than the domain object. An editor cannot underline a
+    finding about ``sink 'crm.write'`` without knowing which line declared
+    it, so the line numbers are carried out here rather than pushed into
+    :class:`~kelvra.policy.Policy`, which has no business knowing about text.
+    """
+
+    policy: Policy
+    warnings: list[str]
+    declaration_lines: dict[str, int]
+    """Declaration name to the line it was declared on."""
+
+    name_lines: dict[str, int]
+    """Principal or purpose name to the line that declared it."""
+
+
+def parse_detailed(text: str, *, filename: str | None = None) -> ParseResult:
+    """Parse, and report where everything was declared."""
     try:
         lines = _scan(text)
         if not lines:
@@ -180,7 +199,18 @@ def parse_with_warnings(text: str, *, filename: str | None = None) -> tuple[Poli
     except KlvError as error:
         raise error.located_in(filename) from None
 
-    return state.policy, state.warnings.items
+    return ParseResult(
+        policy=state.policy,
+        warnings=state.warnings.items,
+        declaration_lines=dict(state.declared_at),
+        name_lines=dict(state.name_lines),
+    )
+
+
+def parse_with_warnings(text: str, *, filename: str | None = None) -> tuple[Policy, list[str]]:
+    """Like :func:`parse`, but also returns non-fatal warnings."""
+    result = parse_detailed(text, filename=filename)
+    return result.policy, result.warnings
 
 
 def parse_file(path: str | Path) -> Policy:
@@ -200,6 +230,7 @@ class _State:
         self.used_principals: set[str] = set()
         self.used_purposes: set[str] = set()
         self.declared_at: dict[str, int] = {}
+        self.name_lines: dict[str, int] = {}
         self.warnings = _Warnings()
 
     # -- cursor ----------------------------------------------------------
@@ -307,6 +338,7 @@ class _State:
             if name in target:
                 self.warnings.add(f"{keyword} {name!r} declared more than once", line.number)
             target.add(name)
+            self.name_lines.setdefault(name, line.number)
 
     # -- declarations ----------------------------------------------------
 

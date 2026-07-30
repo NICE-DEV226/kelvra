@@ -14,6 +14,17 @@ an exact version.
 - **`spec/labels.md`** — the label algebra and flow rule, written to be
   implemented without reading the code. Includes a conformance checklist and
   an explicit list of open questions.
+- **A language server (`kelvra lsp`).** Diagnostics under the offending
+  line as you type, hover that answers *who can reach this sink*, a document
+  outline, and completion of declared principals. One protocol, every editor
+  — the alternative is a plugin per editor.
+
+  Everything below the protocol boundary is a pure function of text and
+  imports nothing, so the interesting half is tested without a client; the
+  pygls handlers are adapters with no logic. pygls is an optional extra
+  (`kelvra[lsp]`) and the core still has no dependencies. Reimplementing the
+  protocol by hand would have been work spent away from the part with value,
+  which is the same argument that put the analysis before the server.
 - **Whole-policy analysis and a `kelvra` command line.** Four findings:
   `unsatisfiable-sink` (error), `untrusted-reaches-sink`, `trapped-source`
   and `unused-declassifier`. Built before a language server on purpose — an

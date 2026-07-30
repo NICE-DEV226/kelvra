@@ -142,6 +142,13 @@ def cmd_explain(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_lsp(args: argparse.Namespace) -> int:
+    """Start the language server. Imported lazily: pygls is an optional extra."""
+    from .lsp import serve
+
+    return serve()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="kelvra",
@@ -169,6 +176,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     explain.add_argument("file", type=Path, metavar="FILE.klv")
     explain.set_defaults(func=cmd_explain)
+
+    lsp = sub.add_parser(
+        "lsp",
+        help="run the language server on stdio",
+        description=(
+            "Speaks the Language Server Protocol on stdin/stdout. Editors launch "
+            "this; you rarely run it by hand. Needs: pip install 'kelvra[lsp]'"
+        ),
+    )
+    lsp.set_defaults(func=cmd_lsp)
 
     return parser
 

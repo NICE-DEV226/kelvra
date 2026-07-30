@@ -45,7 +45,7 @@ What exists:
 - the [known limitations](LIMITATIONS.md) — what is unbuilt, unverified, or unresolved,
 - a reference implementation with no third-party dependencies, whose test suite executes every worked example in the specifications.
 
-What does not exist: the MCP adapter, OpenTelemetry emission, a language server, imports in `.klv`, and any deployment anyone should rely on.
+What does not exist: the MCP adapter, OpenTelemetry emission, imports in `.klv`, and any deployment anyone should rely on.
 
 There is nothing to `pip install` from an index. If you want to argue with the design before it hardens, now is when that is worth most.
 
@@ -161,6 +161,23 @@ Every finding is **definite**: the analysis reports a problem only when no execu
 
 `kelvra explain policy.klv` prints the reachability table and names every declassifier — the complete list of places a leak is possible.
 
+### In your editor
+
+`kelvra lsp` speaks the [Language Server Protocol](https://microsoft.github.io/language-server-protocol/), so the findings above appear under the offending line as you type, in any editor that speaks it — VS Code, Neovim, Zed, Helix, Emacs. One server rather than one plugin per editor.
+
+Hovering a sink answers the question a reviewer actually opens the file to ask:
+
+> **sink `crm.write`**
+> - accepts: `customer,support_team`
+> - requires endorsement by: `reviewer`
+> - requires consent from: `customer`
+>
+> **Reachable by**
+> - `crm.customer_record` (directly)
+> - `inbox.imap` (after declassification)
+
+Install with `pip install "kelvra[lsp]"`. The core still has no dependencies; only the server needs one.
+
 ### The output that matters
 
 Each run emits a signed provenance record — flows taken, declassifications used, consents granted, and **flows denied**. Machine-readable for tooling, summarizable to one page for an auditor. For a compliance team facing a traceability obligation, this record is the product; the policy file is how you configure it.
@@ -212,8 +229,8 @@ Threat model, label vocabulary, provenance format. On paper.
 **Phase 1 — Observation**
 Instrument an existing agent *without enforcing anything*. Label sources, propagate, emit the provenance record. This is immediately useful to a compliance team, and it produces the real flow data needed to design the language against observed behavior rather than imagined syntax.
 
-**Phase 2 — Declaration** *(parser done)*
-The `.klv` language and enforcement at the MCP boundary. A language server comes before the MCP adapter: for most languages an LSP is a convenience, but here the diagnostics *are* the security tool — telling someone in their editor that a flow can never be permitted delivers the whole value proposition at authoring time, before anything runs.
+**Phase 2 — Declaration** *(parser, analysis and language server done)*
+What remains is enforcement at the MCP boundary. The language server came before it deliberately: for most languages an LSP is a convenience, but here the diagnostics *are* the security tool — telling someone in their editor that a flow can never be permitted delivers the whole value proposition at authoring time, before anything runs.
 
 **Phase 3 — Standardization**
 Publish the vocabulary and record format as an implementation-independent specification, and seek a home for it. This is the phase that decides whether the project matters.

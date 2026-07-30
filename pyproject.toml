@@ -32,6 +32,11 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
+# The language server is the one place a third-party library earns its keep:
+# an LSP is protocol plumbing around an analysis, and reimplementing the
+# protocol would be work spent away from the part with value. The pure
+# functions in kelvra.lsp run without it; only `kelvra lsp` needs it.
+lsp = ["pygls>=2.1,<3"]
 mcp = ["mcp>=2.0.0"]
 otel = ["opentelemetry-api>=1.42.0", "opentelemetry-sdk>=1.42.0"]
 # Pinned exactly. An unpinned linter breaks CI on a day nobody changed
