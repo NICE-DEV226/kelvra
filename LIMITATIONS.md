@@ -54,3 +54,11 @@ Recorded rather than deleted, because the reasoning errors are more instructive 
 
 **"The regulatory argument is an extrapolation with no specific text behind it."** The opposite error, and it cost more. The article existed, the date was known, and the standards gap was publicly documented. The project spent months underrating its strongest argument for want of a ten-minute search.
 *Lesson: epistemic humility is only useful when it triggers verification. Otherwise it is just well-phrased ignorance.*
+
+**The corrected competitive map was still incomplete.** After the first entry above was fixed, the survey still missed [AgentArmor](https://arxiv.org/abs/2508.01249) — a type system over agent execution traces with control and data flow graphs, and the closest neighbour this project has — along with [IPIGuard](https://arxiv.org/abs/2508.15310) and several behavioural defences.
+
+The uncomfortable part: every one of them was already cited in a state-of-the-art document the same author had written a month earlier for an adjacent project. The best-placed source was one directory away and was never consulted.
+*Lesson: a literature search that only looks outward misses what you already know. Read your own notes before searching the web.*
+
+**A published figure went stale.** The README claimed the best result in this space cleared "roughly two thirds" of a benchmark's attacks. That was accurate for CaMeL and obsolete once AgentArmor reported 3% attack success on AgentDojo for a 1% utility cost.
+*Lesson: a number quoted to bound someone else's work needs a date attached, or a plan to re-check it.*

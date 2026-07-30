@@ -196,18 +196,20 @@ Kelvra exists downstream of real work. Anyone evaluating this project should rea
 - **[CaMeL](https://arxiv.org/abs/2503.18813)** — *Defeating Prompt Injections by Design* (Google DeepMind, 2025). Attaches capabilities to every value, separates control flow from data flow inside a restricted interpreter.
 - **[FIDES](https://arxiv.org/abs/2505.23643)** — *Securing AI Agents with Information-Flow Control* (Microsoft Research, 2025). Confidentiality **and** integrity labels, deterministic policy enforcement, selective hiding and revealing primitives.
 - **[FORGE / PCAS](https://arxiv.org/abs/2602.16708)** — Datalog policy compilation with a reference monitor and cross-agent provenance (2026).
+- **[AgentArmor](https://arxiv.org/abs/2508.01249)** — treats agent runtime traces as structured programs: control and data flow graphs, a property registry, and a **type system** enforcing security policies. Attack success reduced to 3% on AgentDojo for a 1% utility cost. **The closest neighbour to this project.**
 - **[NeuroTaint](https://arxiv.org/abs/2604.23374)** — taint tracking that treats propagation as semantic transformation and causal influence rather than string matching (2026).
+- **[IPIGuard](https://arxiv.org/abs/2508.15310)** — plans a tool dependency graph before execution and refuses calls outside it, separating planning from data interaction (EMNLP 2025). A deterministic cousin of declaring your sinks in advance.
 - Classic IFC: Denning's lattice model (1976), the [Jif](https://www.cs.cornell.edu/jif/) decentralized label model, and Sabelfeld & Sands on **declassification** — the framing this project's core primitive is built on.
 
 **These systems already solve the enforcement problem, and better than a solo project will.** What none of them provides is an interoperable label vocabulary, a policy surface a non-programmer can read, or an audit artifact designed to be handed to a regulator. That gap is where Kelvra sits, and it is why Kelvra aims to compile *toward* these engines rather than compete with them.
 
-If you know of work that closes this gap already, please open an issue. That is genuinely the most useful contribution right now.
+If you know of work that closes this gap already, please open an issue. That is genuinely the most useful contribution right now — this project has twice claimed a gap that turned out to be occupied, and both times an outside reader would have caught it sooner. See [LIMITATIONS.md](LIMITATIONS.md).
 
 ## What Kelvra does not guarantee
 
 Stated up front, permanently, because a security project that oversells is worth less than one that doesn't exist.
 
-Kelvra does **not** claim an agent "cannot leak." The best published result in this space neutralizes roughly two thirds of a standard benchmark's attacks, not all of them. The honest claim is narrower:
+Kelvra does **not** claim an agent "cannot leak." Published defences in this space have become genuinely strong — [AgentArmor](https://arxiv.org/abs/2508.01249) reports attack success reduced to 3% on AgentDojo for a 1% utility cost — but strong is not total, and more importantly Kelvra is not making the same kind of claim. It is not a detector and publishes no detection rate. The honest claim is narrower and different in kind:
 
 > In an agent governed by Kelvra, there is a **finite, enumerated** set of points where sensitive data can leave. Every one is named, every crossing is logged, and those that require it are gated on explicit consent. There is no undeclared path.
 
