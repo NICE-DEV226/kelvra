@@ -14,8 +14,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 3.10 is the floor declared in pyproject; 3.13 is the current stable.
-        python-version: ["3.10", "3.13"]
+        # 3.10 is the floor declared in pyproject, 3.13 the current stable,
+        # and 3.14 is what the project is actually developed on -- an
+        # untested version that someone works in every day is the one most
+        # likely to break without anyone noticing.
+        python-version: ["3.10", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
