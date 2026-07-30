@@ -120,14 +120,29 @@ class Kelvra:
     # -- propagation -----------------------------------------------------
 
     def model_call(
-        self, site: str, *inputs: Tainted, produce: Callable[..., object] | None = None
+        self,
+        site: str,
+        *inputs: Tainted,
+        produce: Callable[..., object] | None = None,
+        via: str | None = None,
     ) -> Tainted:
         """Run a model call. The output carries the join of every input.
 
         ``produce`` receives the raw values and returns the model's output.
         If omitted, the inputs are returned as a tuple, which is useful for
         testing propagation without spending tokens.
+
+        ``via`` names the model provider as a declared sink, and every input
+        is checked against it before the call happens. Passing it matters:
+        sending data to a remote model is sending it outside the boundary,
+        and without this the provider is the one destination that receives
+        everything and is checked for nothing. It is optional only because a
+        local model is not a sink at all.
         """
+        if via is not None:
+            for tainted in inputs:
+                self.emit(via, tainted)
+
         label = join_all(t.label for t in inputs)
         self.ledger.join(site, [t.origin for t in inputs], label)
         raw = tuple(t.value for t in inputs)

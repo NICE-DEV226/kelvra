@@ -67,22 +67,34 @@ def main() -> int:
     record = k.read("crm.customer_record", {"name": "A. Dupont", "iban": "FR76 3000 ..."})
     print(f"  {record}")
 
-    rule("3. The model processes both. Every input label joins.")
+    rule("3. Sending anything to the model is itself a sharing decision")
+    attempt(
+        "call the model with the raw email",
+        lambda: k.model_call("try", email, via="llm.openai"),
+    )
+    shared_email = k.declassify("share_with_model", email)
+    shared_record = k.declassify("share_with_model", record)
+    print("  Declared, recorded, and now permitted.")
+
+    rule("4. The model processes both. Every input label joins.")
     plan = k.model_call(
-        "agent.plan", email, record, produce=lambda e, r: f"Posting record for {r['name']}"
+        "agent.plan",
+        shared_email,
+        shared_record,
+        produce=lambda e, r: f"Posting record for {r['name']}",
+        via="llm.openai",
     )
     print(f"  {plan}")
     print("  The injection succeeded at the model level -- the plan is hostile.")
     print("  That is expected. Kelvra does not prevent the model being fooled.")
 
-    rule("4. The hostile plan tries to reach its targets")
+    rule("5. The hostile plan tries to reach its targets")
     attempt("post to the public support channel", lambda: k.emit("slack.support_channel", plan))
     attempt("write to the CRM", lambda: k.emit("crm.write", plan))
-    attempt("send to the model provider", lambda: k.emit("llm.openai", plan))
     print("\n  Nobody had to guess what the injected text said.")
     print("  The flow was refused on structure, not on content.")
 
-    rule("5. The legitimate path, for comparison")
+    rule("6. The legitimate path, for comparison")
     summary = k.model_call(
         "agent.summarise", record, produce=lambda r: f"{r['name']} asked about an order"
     )
@@ -98,7 +110,7 @@ def main() -> int:
         lambda: k.emit("crm.write", reviewed),
     )
 
-    rule("6. What the auditor receives")
+    rule("7. What the auditor receives")
     print(k.report())
 
     out = Path(__file__).with_name("run.provenance.json")

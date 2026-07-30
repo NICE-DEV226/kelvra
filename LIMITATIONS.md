@@ -28,6 +28,15 @@ For what Kelvra does not *defend against*, see the [threat model](spec/threat-mo
 
 ## Unvalidated assumptions
 
+**The adversarial evaluation is a floor, not a measurement.** There is one now
+([evaluation/](evaluation/)) — six attacks from a real corpus, five of them
+expressible as a data flow and all five contained, no false positives on three
+benign controls. But the agent in it is modelled as fully compromised rather
+than driven by a real model, so it measures containment and not utility under
+attack. It produces no AgentDojo-comparable number, and it will not until there
+is a real integration to measure. The policy and the harness were also written
+by the same person.
+
 **No user has ever been asked.** No conversation with a developer building agents, a CISO, a DPO, or an auditor. The claim that a provenance record is the artifact compliance teams want is a hypothesis held by people who have never sold to a compliance team.
 
 **"A spec beats an engine" is a bet, not a result.** It rests on historical analogies — SQL, TypeScript, OpenTelemetry, SPIFFE. Analogies are reassuring and prove nothing.
@@ -54,3 +63,11 @@ Recorded rather than deleted, because the reasoning errors are more instructive 
 
 **"The regulatory argument is an extrapolation with no specific text behind it."** The opposite error, and it cost more. The article existed, the date was known, and the standards gap was publicly documented. The project spent months underrating its strongest argument for want of a ten-minute search.
 *Lesson: epistemic humility is only useful when it triggers verification. Otherwise it is just well-phrased ignorance.*
+
+**The corrected competitive map was still incomplete.** After the first entry above was fixed, the survey still missed [AgentArmor](https://arxiv.org/abs/2508.01249) — a type system over agent execution traces with control and data flow graphs, and the closest neighbour this project has — along with [IPIGuard](https://arxiv.org/abs/2508.15310) and several behavioural defences.
+
+The uncomfortable part: every one of them was already cited in a state-of-the-art document the same author had written a month earlier for an adjacent project. The best-placed source was one directory away and was never consulted.
+*Lesson: a literature search that only looks outward misses what you already know. Read your own notes before searching the web.*
+
+**A published figure went stale.** The README claimed the best result in this space cleared "roughly two thirds" of a benchmark's attacks. That was accurate for CaMeL and obsolete once AgentArmor reported 3% attack success on AgentDojo for a 1% utility cost.
+*Lesson: a number quoted to bound someone else's work needs a date attached, or a plan to re-check it.*

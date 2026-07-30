@@ -194,13 +194,58 @@ Because the errors are the point, an implementation MUST report:
 Every diagnostic MUST carry a line number. A message without one is not a
 diagnostic, it is a complaint.
 
-Implementations SHOULD additionally warn — without failing — on:
+Implementations SHOULD additionally warn — without failing — on a declared
+principal or purpose that nothing uses.
 
-- a declared principal or purpose that nothing uses;
-- a declassifier that no flow can reach;
-- a sink whose audience no declared source can satisfy, even after every
-  declared declassification. That last one is the highest-value warning in the
-  language: it says *this flow can never work*, at authoring time.
+## 4.1 Whole-policy analysis
+
+Beyond parsing, an implementation SHOULD analyse the policy as a graph.
+These findings are the earliest point at which Kelvra delivers anything, and
+for the sink case they are the only point at which a structural mistake is
+visible at all — at runtime it appears as an agent that mysteriously never
+performs one of its jobs.
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `unsatisfiable-sink` | error | No declared source can reach this sink, even after applying every declassifier |
+| `untrusted-reaches-sink` | warning | Untrusted data can reach this sink with no endorsement or consent required |
+| `trapped-source` | warning | This source's data can reach no declared sink |
+| `unused-declassifier` | warning | No source-to-sink flow needs this declassification |
+
+### The soundness contract
+
+> **Every finding MUST be definite.** An implementation MUST report a problem
+> only when no execution can avoid it, and MUST stay silent otherwise.
+
+This direction is not negotiable. A checker that cries wolf gets switched
+off, and a switched-off checker protects nothing. The analysis is permitted
+to miss problems; it is not permitted to invent them.
+
+The contract is achievable because labels only ever get *more* restrictive as
+data flows — propagation joins, and join is intersection ([labels.md](labels.md)
+§3). The only thing that relaxes a label is a declared declassifier. So for
+any source, the most permissive label it can ever carry is its own label with
+every declassifier's grants unioned onto it. If a sink cannot accept even
+that, no execution reaches it. That is a fact about the policy, not an
+estimate.
+
+The converse does not hold and MUST NOT be claimed. A sink that accepts the
+optimistic label may still be unreachable in practice, because a real
+pipeline joins several sources and drives the label back down. An
+implementation MUST NOT report that a sink *is* reachable — only that it is
+not provably unreachable.
+
+### `untrusted-reaches-sink`
+
+This is the shape of the attack the project exists for: content an attacker
+controls reaching an action. It is a warning rather than an error because
+Kelvra cannot tell whether the sink matters — posting to a log is not writing
+to a bank, and only the author knows which this is.
+
+An implementation MUST NOT raise it for a sink that declares
+`requires endorsed(...)` or `requires consent(...)`: in the first case
+injected content cannot supply the vouch, and in the second a human stands in
+the way.
 
 ## 5. Canonical JSON form
 

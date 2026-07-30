@@ -14,19 +14,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 3.10 is the floor declared in pyproject; 3.13 is the current stable.
-        python-version: ["3.10", "3.13"]
+        # 3.10 is the floor declared in pyproject, 3.13 the current stable,
+        # and 3.14 is what the project is actually developed on -- an
+        # untested version that someone works in every day is the one most
+        # likely to break without anyone noticing.
+        python-version: ["3.10", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install
-        run: python -m pip install --upgrade pip && pip install -e ".[dev]"
+        # [lsp] included so the language server's protocol test actually runs
+        # rather than skipping quietly, which is how wiring bugs survive.
+        run: python -m pip install --upgrade pip && pip install -e ".[dev,lsp]"
       - name: Test
         run: python -m pytest -q
       - name: Lint
-        run: python -m ruff check src tests examples
+        run: python -m ruff check src tests examples evaluation
 
   demo:
     # The demo is documentation that can rot. Run it so it cannot.
@@ -36,19 +41,51 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
+      - run: pip install -e .
+      - name: Smoke-test the installed command
+        # Installs differ from `python -m`: this is what catches a broken
+        # console script or an exit code that only misbehaves once packaged.
+        run: |
+          kelvra --version
+          kelvra --help > /dev/null
       - run: python examples/support_agent/demo.py
+      - name: Adversarial evaluation
+        # Fails on a leak or a false positive. The point of running it here is
+        # that a regression in the label model shows up as an attack getting
+        # through, not as a unit test turning red in the abstract.
+        run: python evaluation/run.py
+      - name: Check every policy in the repo
+        # Dogfooding. A policy checker that does not run against this
+        # project's own policies is not a checker anyone should trust.
+        run: kelvra check $(git ls-files '*.klv')
 
-  no-internal-docs:
-    # docs/ holds internal working notes that must never be published.
-    # A gitignore entry is a convention; this is the check.
+  nothing-foreign-tracked:
+    # Some things in the working directory must never be published: internal
+    # notes, and a separate project of the author's that lives alongside this
+    # one. A .gitignore entry is a convention; this is the check.
+    #
+    # It exists because a blanket `git add -A` has twice taken something it
+    # should not have. Each entry here was added after the fact, which is the
+    # wrong order -- but a named guard beats remembering.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Fail if internal docs were committed
+      - name: Fail if anything foreign was committed
         run: |
-          if git ls-files --error-unmatch docs/ >/dev/null 2>&1; then
-            echo "::error::docs/ is tracked. It holds internal notes and must stay private."
-            git ls-files docs/
-            exit 1
+          status=0
+          for path in docs project-argus; do
+            if git ls-files --error-unmatch "$path" >/dev/null 2>&1; then
+              echo "::error::$path is tracked and must not be published."
+              git ls-files "$path" | head -20
+              status=1
+            fi
+          done
+          # A gitlink (mode 160000) is an embedded repository committed by
+          # accident. There are no intentional submodules in this project.
+          if git ls-files -s | grep -q '^160000'; then
+            echo "::error::an embedded git repository is tracked:"
+            git ls-files -s | grep '^160000'
+            status=1
           fi
-          echo "OK - no internal docs tracked."
+          [ "$status" -eq 0 ] && echo "OK - nothing foreign tracked."
+          exit "$status"

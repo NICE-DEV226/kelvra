@@ -43,9 +43,10 @@ What exists:
 - the [provenance record](spec/provenance.md) and its [JSON schema](spec/provenance.schema.json) — the audit artifact, including its mapping onto OpenTelemetry GenAI spans,
 - the [threat model](spec/threat-model.md) — who this defends against, and explicitly who it does not,
 - the [known limitations](LIMITATIONS.md) — what is unbuilt, unverified, or unresolved,
-- a reference implementation with no third-party dependencies, whose test suite executes every worked example in the specifications.
+- a reference implementation with no third-party dependencies, whose test suite executes every worked example in the specifications,
+- an [adversarial evaluation](evaluation/) against a corpus of real indirect prompt injections — six attacks, five expressible as a data flow and all five contained, no false positives on three benign controls, and one attack it explicitly cannot see.
 
-What does not exist: the MCP adapter, OpenTelemetry emission, a language server, imports in `.klv`, and any deployment anyone should rely on.
+What does not exist: the MCP adapter, OpenTelemetry emission, imports in `.klv`, and any deployment anyone should rely on.
 
 There is nothing to `pip install` from an index. If you want to argue with the design before it hardens, now is when that is worth most.
 
@@ -141,6 +142,43 @@ Two axes matter here, not one:
 
 `declassify` and `endorse` are the two places where something can go wrong, so they are the two places that get dedicated syntax and a mandatory audit entry. These are the standard terms from the IFC literature, used deliberately.
 
+### Checked before anything runs
+
+```console
+$ kelvra check policy.klv
+error[unsatisfiable-sink] sink 'crm.write': no declared source can reach this sink,
+  even after applying every declassifier
+  hint: nothing grants endorsement by reviewer; add an 'endorse' declaration that grants it
+
+warning[untrusted-reaches-sink] sink 'slack.support_channel': reachable by untrusted
+  data from 'inbox.imap', with no endorsement or consent required
+  hint: if this sink takes an action rather than just recording one, injected content
+        can drive it. Add 'requires endorsed(...)' or 'requires consent(...)'
+```
+
+The second finding is the shape of the attack, spotted at authoring time by reading the policy graph — no execution, no traffic, no incident.
+
+Every finding is **definite**: the analysis reports a problem only when no execution can avoid it, and stays silent otherwise. It is allowed to miss things; it is not allowed to invent them. A checker that cries wolf gets switched off, and a switched-off checker protects nothing. Warnings exit 0 so they never break a build by surprise; `--strict` and `--json` are there for the pipelines that want more.
+
+`kelvra explain policy.klv` prints the reachability table and names every declassifier — the complete list of places a leak is possible.
+
+### In your editor
+
+`kelvra lsp` speaks the [Language Server Protocol](https://microsoft.github.io/language-server-protocol/), so the findings above appear under the offending line as you type, in any editor that speaks it — VS Code, Neovim, Zed, Helix, Emacs. One server rather than one plugin per editor.
+
+Hovering a sink answers the question a reviewer actually opens the file to ask:
+
+> **sink `crm.write`**
+> - accepts: `customer,support_team`
+> - requires endorsement by: `reviewer`
+> - requires consent from: `customer`
+>
+> **Reachable by**
+> - `crm.customer_record` (directly)
+> - `inbox.imap` (after declassification)
+
+Install with `pip install "kelvra[lsp]"`. The core still has no dependencies; only the server needs one.
+
 ### The output that matters
 
 Each run emits a signed provenance record — flows taken, declassifications used, consents granted, and **flows denied**. Machine-readable for tooling, summarizable to one page for an auditor. For a compliance team facing a traceability obligation, this record is the product; the policy file is how you configure it.
@@ -159,24 +197,28 @@ Kelvra exists downstream of real work. Anyone evaluating this project should rea
 - **[CaMeL](https://arxiv.org/abs/2503.18813)** — *Defeating Prompt Injections by Design* (Google DeepMind, 2025). Attaches capabilities to every value, separates control flow from data flow inside a restricted interpreter.
 - **[FIDES](https://arxiv.org/abs/2505.23643)** — *Securing AI Agents with Information-Flow Control* (Microsoft Research, 2025). Confidentiality **and** integrity labels, deterministic policy enforcement, selective hiding and revealing primitives.
 - **[FORGE / PCAS](https://arxiv.org/abs/2602.16708)** — Datalog policy compilation with a reference monitor and cross-agent provenance (2026).
+- **[AgentArmor](https://arxiv.org/abs/2508.01249)** — treats agent runtime traces as structured programs: control and data flow graphs, a property registry, and a **type system** enforcing security policies. Attack success reduced to 3% on AgentDojo for a 1% utility cost. **The closest neighbour to this project.**
 - **[NeuroTaint](https://arxiv.org/abs/2604.23374)** — taint tracking that treats propagation as semantic transformation and causal influence rather than string matching (2026).
+- **[IPIGuard](https://arxiv.org/abs/2508.15310)** — plans a tool dependency graph before execution and refuses calls outside it, separating planning from data interaction (EMNLP 2025). A deterministic cousin of declaring your sinks in advance.
 - Classic IFC: Denning's lattice model (1976), the [Jif](https://www.cs.cornell.edu/jif/) decentralized label model, and Sabelfeld & Sands on **declassification** — the framing this project's core primitive is built on.
 
 **These systems already solve the enforcement problem, and better than a solo project will.** What none of them provides is an interoperable label vocabulary, a policy surface a non-programmer can read, or an audit artifact designed to be handed to a regulator. That gap is where Kelvra sits, and it is why Kelvra aims to compile *toward* these engines rather than compete with them.
 
-If you know of work that closes this gap already, please open an issue. That is genuinely the most useful contribution right now.
+If you know of work that closes this gap already, please open an issue. That is genuinely the most useful contribution right now — this project has twice claimed a gap that turned out to be occupied, and both times an outside reader would have caught it sooner. See [LIMITATIONS.md](LIMITATIONS.md).
 
 ## What Kelvra does not guarantee
 
 Stated up front, permanently, because a security project that oversells is worth less than one that doesn't exist.
 
-Kelvra does **not** claim an agent "cannot leak." The best published result in this space neutralizes roughly two thirds of a standard benchmark's attacks, not all of them. The honest claim is narrower:
+Kelvra does **not** claim an agent "cannot leak." Published defences in this space have become genuinely strong — [AgentArmor](https://arxiv.org/abs/2508.01249) reports attack success reduced to 3% on AgentDojo for a 1% utility cost — but strong is not total, and more importantly Kelvra is not making the same kind of claim. It is not a detector and publishes no detection rate. The honest claim is narrower and different in kind:
 
 > In an agent governed by Kelvra, there is a **finite, enumerated** set of points where sensitive data can leave. Every one is named, every crossing is logged, and those that require it are gated on explicit consent. There is no undeclared path.
 
+The [evaluation](evaluation/) is where that claim meets an actual corpus, including one attack it demonstrably cannot see.
+
 Specifically, Kelvra does not:
 
-- verify what a language model produces — if an authorized summary contains something it shouldn't, Kelvra will not see it;
+- verify what a language model produces — if an authorized summary contains something it shouldn't, Kelvra will not see it. One attack in the corpus is exactly this, and it gets through;
 - guarantee that a redaction function actually redacts — only that it is the sole declared crossing, and that its use is recorded;
 - detect covert channels (timing, output length, steganographic encoding);
 - stop a hostile developer — someone who declassifies everything gets a valid program, one whose policy file shows in plain text that it declassifies everything;
@@ -192,8 +234,8 @@ Threat model, label vocabulary, provenance format. On paper.
 **Phase 1 — Observation**
 Instrument an existing agent *without enforcing anything*. Label sources, propagate, emit the provenance record. This is immediately useful to a compliance team, and it produces the real flow data needed to design the language against observed behavior rather than imagined syntax.
 
-**Phase 2 — Declaration** *(parser done)*
-The `.klv` language and enforcement at the MCP boundary. A language server comes before the MCP adapter: for most languages an LSP is a convenience, but here the diagnostics *are* the security tool — telling someone in their editor that a flow can never be permitted delivers the whole value proposition at authoring time, before anything runs.
+**Phase 2 — Declaration** *(parser, analysis and language server done)*
+What remains is enforcement at the MCP boundary. The language server came before it deliberately: for most languages an LSP is a convenience, but here the diagnostics *are* the security tool — telling someone in their editor that a flow can never be permitted delivers the whole value proposition at authoring time, before anything runs.
 
 **Phase 3 — Standardization**
 Publish the vocabulary and record format as an implementation-independent specification, and seek a home for it. This is the phase that decides whether the project matters.

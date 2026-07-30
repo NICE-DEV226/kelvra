@@ -46,7 +46,7 @@ def test_the_example_policy_parses():
     assert policy.version == 1
     assert set(policy.sources) == {"inbox.imap", "crm.customer_record"}
     assert set(policy.sinks) == {"llm.openai", "slack.support_channel", "crm.write"}
-    assert set(policy.declassifiers) == {"pii_redaction", "human_review"}
+    assert set(policy.declassifiers) == {"pii_redaction", "human_review", "share_with_model"}
 
 
 def test_the_example_policy_is_clean():
@@ -80,7 +80,9 @@ def test_labels_map_as_the_spec_says():
 def test_sink_clauses_map_as_the_spec_says():
     sinks = parse_file(EXAMPLE).sinks
 
-    assert sinks["llm.openai"].audience.is_all
+    # The model provider is a named principal, not the world: sending data to
+    # it is a sharing decision, and the policy says who is being shared with.
+    assert sinks["llm.openai"].audience == PrincipalSet.of("model_provider")
     assert sinks["slack.support_channel"].audience == PrincipalSet.of("support_team")
 
     crm = sinks["crm.write"]
