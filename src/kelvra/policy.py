@@ -9,6 +9,7 @@ roadmap in README.md.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from types import MappingProxyType
 
 from .labels import Label, PrincipalSet
 
@@ -59,6 +60,11 @@ class Decision:
     sink: str
     label: Label
     reasons: tuple[str, ...] = ()
+    axes: tuple[str, ...] = ()
+    """Which checks failed: ``audience``, ``endorsement`` and/or ``purpose``.
+
+    Structured, so that nothing has to recover it by searching ``reasons``.
+    """
 
     def __bool__(self) -> bool:
         return self.allowed
@@ -78,26 +84,34 @@ def check_flow(label: Label, sink: Sink) -> Decision:
       purpose          the sink's purpose is among the permitted ones
     """
     reasons: list[str] = []
+    axes: list[str] = []
 
     if not (sink.audience <= label.readers):
         reasons.append(
             f"audience {sink.audience!r} is not permitted to read "
             f"data readable by {label.readers!r}"
         )
+        axes.append("audience")
 
     if not (sink.requires_endorsement <= label.endorsers):
         missing = "untrusted data" if label.endorsers.is_empty else f"endorsers {label.endorsers!r}"
         reasons.append(
             f"sink requires endorsement by {sink.requires_endorsement!r} but got {missing}"
         )
+        axes.append("endorsement")
 
     if sink.purpose is not None and sink.purpose not in label.purposes:
         reasons.append(
             f"sink serves purpose {sink.purpose!r}, not permitted by {label.purposes!r}"
         )
+        axes.append("purpose")
 
     return Decision(
-        allowed=not reasons, sink=sink.name, label=label, reasons=tuple(reasons)
+        allowed=not reasons,
+        sink=sink.name,
+        label=label,
+        reasons=tuple(reasons),
+        axes=tuple(axes),
     )
 
 
@@ -124,6 +138,20 @@ class Declassifier:
     grants_purposes: PrincipalSet = field(default_factory=PrincipalSet.none)
 
     requires_consent_from: str | None = None
+
+    expects: Label | None = None
+    """What the author said this is for (the ``from`` clause), as an upper bound.
+
+    Data matches when it is at least as restrictive as ``expects`` on every
+    axis. Documentation, not enforcement: see ``matches_from``. ``None`` means
+    no ``from`` was declared.
+    """
+
+    def matches_from(self, label: Label) -> str:
+        """``within``, ``outside`` or ``undeclared``; never a refusal."""
+        if self.expects is None:
+            return "undeclared"
+        return "within" if label.is_at_least_as_restrictive_as(self.expects) else "outside"
 
     def apply(self, label: Label) -> Label:
         return Label(
@@ -198,15 +226,35 @@ class Policy:
 
         The caller's policy object is untouched and stays mutable; the
         session holds this copy.
+
+        The copy is read-only in the ordinary sense: its three tables are
+        ``MappingProxyType`` views, and assigning any attribute (``sealed``
+        included) raises :class:`PolicySealed`. Python cannot stop code in the
+        same process that reaches for ``object.__setattr__``, so the session
+        also re-derives the fingerprint before it signs a record and refuses
+        to sign if it no longer matches (see ``Kelvra.record``).
         """
         return Policy(
             name=self.name,
             version=self.version,
-            sources=dict(self.sources),
-            sinks=dict(self.sinks),
-            declassifiers=dict(self.declassifiers),
+            sources=MappingProxyType(dict(self.sources)),  # type: ignore[arg-type]
+            sinks=MappingProxyType(dict(self.sinks)),  # type: ignore[arg-type]
+            declassifiers=MappingProxyType(dict(self.declassifiers)),  # type: ignore[arg-type]
             sealed=True,
         )
+
+    def __setattr__(self, key: str, value: object) -> None:
+        if self.__dict__.get("sealed", False):
+            raise PolicySealed(
+                f"policy {self.name!r} is sealed; cannot set {key!r}. "
+                "A run whose policy changed underneath it cannot be honestly attested to."
+            )
+        super().__setattr__(key, value)
+
+    def __delattr__(self, key: str) -> None:
+        if self.__dict__.get("sealed", False):
+            raise PolicySealed(f"policy {self.name!r} is sealed; cannot delete {key!r}.")
+        super().__delattr__(key)
 
     def fingerprint(self) -> str:
         """Stable hash of the effective policy, recorded in every run.
@@ -241,6 +289,7 @@ class Policy:
                     "grants_endorsement": d.grants_endorsement.to_json(),
                     "grants_purposes": d.grants_purposes.to_json(),
                     "requires_consent_from": d.requires_consent_from,
+                    "expects": None if d.expects is None else d.expects.to_json(),
                 }
                 for n, d in sorted(self.declassifiers.items())
             },

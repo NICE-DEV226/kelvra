@@ -34,6 +34,15 @@ class PrincipalSet:
 
     _members: frozenset[str] | None  # None means the universe
 
+    def __post_init__(self) -> None:
+        # '*' is the universe. A principal literally named '*' would serialise
+        # as ["*"] next to the universe's "*" -- the ambiguity the .klv parser
+        # already refuses (spec/provenance.md section 5) -- so refuse it here too.
+        if self._members is not None and any(
+            not isinstance(m, str) or not m or m == "*" for m in self._members
+        ):
+            raise ValueError("a principal must be a non-empty name other than '*'")
+
     # -- construction ----------------------------------------------------
 
     @staticmethod
