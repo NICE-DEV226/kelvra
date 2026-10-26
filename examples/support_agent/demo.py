@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from kelvra import ConsentRefused, Denied, Kelvra
+from kelvra import ConsentDecision, ConsentRefused, Denied, Kelvra, verify_record
 from kelvra.klv import parse_file
 
 # --------------------------------------------------------------------------
@@ -56,28 +56,43 @@ def attempt(description: str, fn) -> None:
 
 
 def main() -> int:
-    k = Kelvra(policy, signing_key=b"demo-key-not-for-production", consent=lambda p, c: True)
+    # The human reviewer reads what is put in front of them. In step 6 they are
+    # shown the plan the injection produced and refuse it; a consent provider
+    # that answers yes to everything would turn the endorsement back into the
+    # automatic conversion the policy checker rejects.
+    reviewing = {"hostile_plan": False}
+
+    def consent(principal: str, context: str) -> ConsentDecision:
+        # Whoever decides is named: the record says who agreed, not just that someone did.
+        refuse = principal == "reviewer" and reviewing["hostile_plan"]
+        return ConsentDecision(not refuse, f"{principal}-on-duty")
+
+    k = Kelvra(policy, signing_key=b"demo-key-not-for-production", consent=consent)
+
+    # The agent is handed the session: read, model_call, emit. Relaxing a label
+    # is a control-plane act and stays with `k`, which the agent never holds.
+    agent = k.agent_session()
 
     rule("1. The agent reads an inbound email containing injected instructions")
-    email = k.read("inbox.imap", HOSTILE_EMAIL)
+    email = agent.read("inbox.imap", HOSTILE_EMAIL)
     print(f"  {email}")
     print("  Note: confidential AND untrusted. Two independent axes.")
 
     rule("2. It reads the customer record, as it is legitimately allowed to")
-    record = k.read("crm.customer_record", {"name": "A. Dupont", "iban": "FR76 3000 ..."})
+    record = agent.read("crm.customer_record", {"name": "A. Dupont", "iban": "FR76 3000 ..."})
     print(f"  {record}")
 
     rule("3. Sending anything to the model is itself a sharing decision")
     attempt(
         "call the model with the raw email",
-        lambda: k.model_call("try", email, via="llm.openai"),
+        lambda: agent.model_call("try", email, via="llm.openai"),
     )
     shared_email = k.declassify("share_with_model", email)
     shared_record = k.declassify("share_with_model", record)
     print("  Declared, recorded, and now permitted.")
 
     rule("4. The model processes both. Every input label joins.")
-    plan = k.model_call(
+    plan = agent.model_call(
         "agent.plan",
         shared_email,
         shared_record,
@@ -89,26 +104,33 @@ def main() -> int:
     print("  That is expected. Kelvra does not prevent the model being fooled.")
 
     rule("5. The hostile plan tries to reach its targets")
-    attempt("post to the public support channel", lambda: k.emit("slack.support_channel", plan))
-    attempt("write to the CRM", lambda: k.emit("crm.write", plan))
+    attempt("post to the public support channel", lambda: agent.emit("slack.support_channel", plan))
+    attempt("write to the CRM", lambda: agent.emit("crm.write", plan))
     print("\n  Nobody had to guess what the injected text said.")
     print("  The flow was refused on structure, not on content.")
 
     rule("6. The legitimate path, for comparison")
-    summary = k.model_call(
+    summary = agent.model_call(
         "agent.summarise", record, produce=lambda r: f"{r['name']} asked about an order"
     )
     shareable = k.declassify("pii_redaction", summary)
     attempt(
         "post the redacted summary to support",
-        lambda: k.emit("slack.support_channel", shareable),
+        lambda: agent.emit("slack.support_channel", shareable),
     )
 
-    reviewed = k.declassify("human_review", k.declassify("pii_redaction", plan))
     attempt(
-        "write to the CRM after redaction + human review",
-        lambda: k.emit("crm.write", reviewed),
+        "write the redacted summary to the CRM",
+        lambda: agent.emit("crm.write", shareable),
     )
+
+    reviewing["hostile_plan"] = True
+    attempt(
+        "endorse the hostile plan (the reviewer reads it and refuses)",
+        lambda: k.declassify("human_review", k.declassify("pii_redaction", plan)),
+    )
+    reviewing["hostile_plan"] = False
+    print(f"  The agent session has declassify? {hasattr(agent, 'declassify')}")
 
     rule("7. What the auditor receives")
     print(k.report())
@@ -118,6 +140,8 @@ def main() -> int:
     out.write_text(json.dumps(record_json, indent=2), encoding="utf-8")
     print(f"\n  signed record -> {out.name}")
     print(f"  {record_json['summary']}")
+    check = verify_record(record_json, b"demo-key-not-for-production")
+    print(f"  verified: {check.ok}, signed: {check.signed}, chained: {not check.legacy}")
 
     return 0
 

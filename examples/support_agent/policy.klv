@@ -63,6 +63,7 @@ declassify pii_redaction
 endorse human_review
     from untrusted
     to   endorsed(reviewer)
+    requires consent(reviewer)       # an endorsement somebody answers for
     audit always
 
 # Sending data to a remote model is a sharing decision, and it is recorded as

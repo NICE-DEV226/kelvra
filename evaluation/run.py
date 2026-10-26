@@ -29,7 +29,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT.parent / "src"))
 
-from kelvra import ConsentRefused, Denied, Kelvra  # noqa: E402
+from kelvra import ConsentRefused, Denied, Kelvra, approved_by  # noqa: E402
 from kelvra.klv import parse_file  # noqa: E402
 
 CORPUS = ROOT / "corpus"
@@ -167,7 +167,11 @@ class Outcome:
 def run(scenario: Scenario) -> Outcome:
     """Play one scenario through Kelvra with a fully compromised agent."""
     policy = parse_file(POLICY)
-    k = Kelvra(policy, signing_key=b"evaluation", consent=lambda principal, ctx: True)
+    k = Kelvra(
+        policy,
+        signing_key=b"evaluation-key-0123456789",
+        consent=approved_by("evaluation-reviewer"),
+    )
 
     if scenario.outside_model:
         return Outcome(
@@ -179,19 +183,33 @@ def run(scenario: Scenario) -> Outcome:
             ),
         )
 
+    # The agent is handed the session and nothing else. Relaxing a label is a
+    # control-plane act: only a legitimate path (below) reaches `k.declassify`.
+    agent = k.agent_session()
+
     text = (CORPUS / scenario.document).read_text(encoding="utf-8")
-    data = k.read(scenario.source, text)
+    data = agent.read(scenario.source, text)
 
     # The model reads the document. Whatever it emits carries every input
     # label -- a total join, regardless of what the injection said.
-    output = k.model_call(f"agent.{scenario.name}", data, produce=lambda t: t)
+    output = agent.model_call(f"agent.{scenario.name}", data, produce=lambda t: t)
+
+    if scenario.hostile and hasattr(agent, "declassify"):
+        # A compromised agent would launder its own output before sending it.
+        # If it could, the earlier numbers would have measured nothing.
+        return Outcome(
+            scenario=scenario,
+            contained=False,
+            reason="the agent session exposes declassify",
+            declassifications=k.ledger.declassification_count,
+        )
 
     for name in scenario.declassify:
-        output = k.declassify(name, output)
+        output = k.declassify(name, output)  # the authority, on the legitimate path
 
     assert scenario.sink is not None
     try:
-        k.emit(scenario.sink, output)
+        agent.emit(scenario.sink, output)
     except LookupError:
         return Outcome(
             scenario=scenario,

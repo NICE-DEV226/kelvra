@@ -84,4 +84,5 @@ declassify summarise_for_manager
 endorse human_review
     from untrusted
     to   endorsed(reviewer)
+    requires consent(reviewer)
     audit always
