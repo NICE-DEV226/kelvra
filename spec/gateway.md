@@ -88,6 +88,11 @@ Also:
   message it checked, not the original bytes, so the server reads exactly what was
   checked.
 * At most 10 000 requests may be in flight; more are refused.
+* A message that is **both a request and a response** (`method` together with
+  `result` or `error`, `result` together with `error`, or a `method` that is not
+  text) is not forwarded in either direction. A strict peer reads it as a request
+  and a lenient one as the answer to a pending call; if the gateway took it for a
+  request, a result would reach the model without its label being taken.
 * Lines that are not JSON are not forwarded.
 * When the **server dies** with requests in flight, each of them is answered with a
   JSON-RPC internal error (`-32603`) and the gateway exits with the server's exit

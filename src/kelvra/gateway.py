@@ -280,6 +280,25 @@ def _parse(line: str) -> Any:
     return json.loads(line, object_pairs_hook=_reject_duplicates, parse_constant=_refuse_constant)
 
 
+def _ambiguous(message: dict[str, Any]) -> bool:
+    """A message whose kind depends on who is reading it.
+
+    JSON-RPC separates requests and notifications (they have ``method``) from
+    responses (``result`` or ``error``, never ``method``). A message carrying both
+    is a request to a strict peer and a response to a lenient one; if the gateway
+    reads it one way and the peer the other, a result reaches the model without
+    its label being taken. ``result`` together with ``error`` is the same hazard,
+    and so is a ``method`` that is not text. None of them is legitimate, so none
+    is forwarded.
+    """
+    has_method = "method" in message
+    has_result = "result" in message
+    has_error = "error" in message
+    if has_method and not isinstance(message["method"], str):
+        return True
+    return (has_method and (has_result or has_error)) or (has_result and has_error)
+
+
 def _line(obj: dict[str, Any]) -> str:
     # ASCII only: a lone surrogate escape in a message must not become an
     # unencodable string on the way out.
@@ -363,6 +382,12 @@ class McpFilter:
             )
         if not isinstance(message, dict):
             return FilterOutput(reply=(_error(None, _INVALID_REQUEST, "invalid request"),))
+        if _ambiguous(message):
+            return FilterOutput(
+                reply=(
+                    _error(None, _INVALID_REQUEST, "a message cannot be both request and response"),
+                )
+            )
 
         method = message.get("method")
         request_id = message.get("id")
@@ -417,8 +442,8 @@ class McpFilter:
             message = _parse(line)
         except (ValueError, RecursionError):
             return FilterOutput()  # not MCP; do not hand it to the client
-        if not isinstance(message, dict):
-            return FilterOutput()
+        if not isinstance(message, dict) or _ambiguous(message):
+            return FilterOutput()  # not handed on: the client might read it differently
 
         method = message.get("method")
         if isinstance(method, str):

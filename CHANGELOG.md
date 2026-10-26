@@ -72,6 +72,11 @@ never exposed; what changed:
   Also fixed: reading the client through a buffered `stdin` could abort the
   interpreter at shutdown. `tests/test_interop_mcp_sdk.py` keeps all of it (skipped
   unless `mcp` is installed) and CI runs it against both SDK generations.
+- The gateway refuses a message that is both a request and a response, in both
+  directions: forwarded as a request, `{"id":3,"method":"x","result":{...}}` let a
+  result reach the client unlabelled while the call stayed pending, as a lenient
+  client would read it as the answer. Found by an automated security review of the
+  commits; reproduced before it was fixed.
 - **A journal** (`Journal`, `Kelvra(journal_path=...)`, `read_journal`,
   `journal_to_record`): events written to disk as they happen, before they count as
   recorded; incomplete runs are reported as such; complete ones are rebuilt exactly.
