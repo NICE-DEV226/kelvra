@@ -17,6 +17,7 @@ from kelvra import (
     PrincipalSet,
     Sink,
     Source,
+    approved_by,
     declassify_to,
     endorse_as,
     verify,
@@ -53,7 +54,7 @@ def run() -> Kelvra:
     p.add_declassifier(declassify_to("pii_redaction", "customer", "support_team"))
     p.add_declassifier(endorse_as("human_review", "reviewer", consent_from="support_team"))
 
-    k = Kelvra(p, signing_key=b"spec-test-key", consent=lambda principal, ctx: True)
+    k = Kelvra(p, signing_key=b"spec-test-key-0123456789", consent=approved_by("test-reviewer"))
 
     email = k.read("inbox.imap", INJECTION)
     record = k.read("crm.record", {"name": CUSTOMER_NAME, "iban": IBAN})
@@ -148,9 +149,19 @@ def test_fingerprint_covers_the_effective_policy():
     a, b = run(), run()
     assert a.record()["policy"]["fingerprint"] == b.record()["policy"]["fingerprint"]
 
-    changed = run()
-    changed.policy.sinks["extra"] = Sink("extra", audience=PrincipalSet.all())
-    assert changed.policy.fingerprint() != a.policy.fingerprint()
+    # The session's policy is sealed and cannot be edited in place any more, so
+    # derive a modified, unsealed copy: the property under test -- a different
+    # policy gives a different fingerprint -- is unchanged.
+    live = a.policy
+    changed = Policy(
+        name=live.name,
+        version=live.version,
+        sources=dict(live.sources),
+        sinks=dict(live.sinks),
+        declassifiers=dict(live.declassifiers),
+    )
+    changed.sinks["extra"] = Sink("extra", audience=PrincipalSet.all())
+    assert changed.fingerprint() != a.policy.fingerprint()
 
 
 def test_a_running_policy_cannot_be_amended():
