@@ -85,6 +85,12 @@ committed. Text files are read and written as UTF-8 with an explicit
 found violated, each stated from the specification rather than from the code.
 Treat a failure there as a regression of a known defect, not as a flaky test.
 
+The gateway's differential test (`tests/test_gateway_differential.py`) uses whichever of
+Python, Node, Ruby, PHP, Perl, jq and Go are installed; set `KELVRA_REQUIRE_PEERS=go,node`
+to make a missing one a failure, and `KELVRA_DIFF_CLIENT` / `KELVRA_DIFF_SERVER` (default
+4000 / 1500) to run it at a larger scale. It is worth running at 40000 before changing how
+the gateway reads or forwards a message.
+
 ### House rules
 
 **The specification is the product.** A change to enforcement behaviour that
