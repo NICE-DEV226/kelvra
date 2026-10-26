@@ -31,14 +31,10 @@ from dataclasses import dataclass
 from typing import Literal
 
 from .analysis import analyse
-from .klv import KlvError, parse_detailed
+from .klv import KlvError, parse_detailed, split_lines
 from .policy import Policy, check_flow
 
 DiagnosticSeverity = Literal["error", "warning", "information"]
-
-# `subject` on a Finding reads like "sink 'crm.write'". Recovering the bare
-# name is what lets a finding be attached to the line that declared it.
-_SUBJECT = re.compile(r"^(?:\w+)\s+'([^']+)'$")
 
 _DECLARATION = re.compile(r"^(source|sink|declassify|endorse)\s+([\w.-]+)")
 
@@ -63,11 +59,6 @@ class Diagnostic:
         return f"{self.message}\n\nhint: {self.hint}" if self.hint else self.message
 
 
-def _subject_name(subject: str) -> str | None:
-    match = _SUBJECT.match(subject)
-    return match.group(1) if match else None
-
-
 def diagnostics_for(text: str, *, filename: str | None = None) -> list[Diagnostic]:
     """Everything wrong with a document: parse errors, then policy findings.
 
@@ -88,26 +79,31 @@ def diagnostics_for(text: str, *, filename: str | None = None) -> list[Diagnosti
                 hint=error.hint,
             )
         ]
+    except Exception as error:
+        # An exception escaping a handler leaves the editor showing the
+        # previous diagnostics, usually a clean file. Say that the check
+        # itself failed rather than let silence read as "no findings".
+        return [
+            Diagnostic(
+                line=1,
+                severity="error",
+                code="internal",
+                message=f"the policy could not be checked: {type(error).__name__}",
+                hint="this is a bug in kelvra; the file was NOT verified",
+            )
+        ]
 
     diagnostics: list[Diagnostic] = []
 
-    for warning in result.warnings:
-        line, _, message = warning.partition(": ")
-        number = int(line.removeprefix("line ")) if line.startswith("line ") else 1
+    for number, message in result.warning_lines:
         diagnostics.append(
-            Diagnostic(
-                line=max(number, 1),
-                severity="warning",
-                code="policy",
-                message=message or warning,
-            )
+            Diagnostic(line=max(number, 1), severity="warning", code="policy", message=message)
         )
 
     for finding in analyse(result.policy):
-        name = _subject_name(finding.subject)
         diagnostics.append(
             Diagnostic(
-                line=result.declaration_lines.get(name or "", 1),
+                line=result.declaration_lines.get(finding.name, 1),
                 severity="error" if finding.severity == "error" else "warning",
                 code=finding.code,
                 message=f"{finding.subject}: {finding.message}",
@@ -123,7 +119,7 @@ def diagnostics_for(text: str, *, filename: str | None = None) -> list[Diagnosti
 
 def word_at(text: str, line: int, character: int) -> str | None:
     """The identifier under a 1-based line and 0-based character offset."""
-    lines = text.splitlines()
+    lines = split_lines(text)
     if not 1 <= line <= len(lines):
         return None
     source = lines[line - 1]
@@ -279,7 +275,7 @@ def symbols_for(text: str) -> list[Symbol]:
     outline that disappears exactly when you are lost in the file.
     """
     symbols = []
-    for number, raw in enumerate(text.splitlines(), start=1):
+    for number, raw in enumerate(split_lines(text), start=1):
         match = _DECLARATION.match(raw.split("#", 1)[0].strip())
         if match:
             symbols.append(Symbol(name=match.group(2), kind=match.group(1), line=number))
@@ -288,7 +284,7 @@ def symbols_for(text: str) -> list[Symbol]:
 
 def completions_for(text: str, line: int, character: int) -> list[tuple[str, str]]:
     """``(label, detail)`` pairs for the cursor position."""
-    lines = text.splitlines()
+    lines = split_lines(text)
     prefix = lines[line - 1][:character] if 1 <= line <= len(lines) else ""
 
     try:
