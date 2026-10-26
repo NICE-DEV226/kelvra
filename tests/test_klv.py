@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from kelvra import PrincipalSet
+from kelvra import PrincipalSet, approved_by
 from kelvra.klv import KlvError, parse, parse_file, parse_with_warnings
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -404,7 +404,7 @@ def test_a_parsed_policy_enforces():
     """Parsing is only useful if the result behaves."""
     from kelvra import Denied, Kelvra
 
-    k = Kelvra(parse_file(EXAMPLE), consent=lambda principal, ctx: True)
+    k = Kelvra(parse_file(EXAMPLE), consent=approved_by("test-reviewer"))
     email = k.read("inbox.imap", "hostile")
     plan = k.model_call("agent.plan", email, produce=lambda e: e)
 

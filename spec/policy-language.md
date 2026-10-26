@@ -18,7 +18,15 @@ RFC 2119 keywords apply.
 
 ## 1. Lexical structure
 
-- Files are UTF-8. Implementations MUST accept both LF and CRLF.
+- Files are UTF-8. Lines end with LF or CRLF; a lone CR is tolerated. **No other
+  character ends a line**: U+2028, U+2029, U+0085, VT, FF and FS/GS/RS are not
+  line terminators, and an implementation MUST NOT split on them.
+- A single leading byte-order mark (U+FEFF) is ignored.
+- Control characters other than TAB (category Cc), format characters such as
+  bidirectional overrides and zero-width characters (Cf), and the Unicode line
+  and paragraph separators (Zl, Zp) MUST be rejected **everywhere in the file,
+  comments included**. Each can make the text a reviewer sees differ from the
+  text an implementation enforces.
 - `#` begins a comment that runs to end of line. There are no block comments.
 - Blank lines and comment-only lines are ignored everywhere.
 - **Indentation is significant**: a declaration header sits at column 0, and
@@ -64,6 +72,7 @@ declassifier ::= ( "declassify" | "endorse" ) identifier NEWLINE
                  INDENT declass_clause+ DEDENT
 declass_clause ::= "from" label_expr
                  | "to" label_expr
+                 | "requires" "consent" "(" identifier ")"
                  | "audit" ( "always" )
 
 confidentiality ::= ( "public" | "confidential" "(" name_list ")" )
@@ -159,9 +168,10 @@ endorse human_review
 
 `to` is normative: it declares what the construct **grants**, unioned onto
 the incoming label. `from` is documentation — it records the author's intent
-about what this crossing is for, and an implementation MAY warn when a
-declassification is applied to a label that does not match, but MUST NOT
-refuse it. Enforcing `from` would require knowing every label that can reach
+about what this crossing is for. It MUST still be parsed, so that a typo in it
+is an error, and an implementation MUST record in the provenance record whether
+each use matched it (`from_check`, [provenance.md](provenance.md) §4). It MUST NOT
+refuse a mismatch. Enforcing `from` would require knowing every label that can reach
 the construct, which is exactly the whole-program analysis this design avoids.
 
 `declassify` and `endorse` are the same construct with different names.
@@ -189,6 +199,10 @@ Because the errors are the point, an implementation MUST report:
 | a duplicate declaration name | with both lines |
 | `audit never` | |
 | mixed tabs and spaces | |
+| a forbidden character (§1), in a comment or not | with the code point |
+| a second `integrity`, `for`, or `requires consent` in one declaration | a clause that silently overwrote another would let a later line undo an earlier one |
+| `requires endorsed(...)` inside `declassify`/`endorse` | it would have no effect |
+| `policy` not followed by a name, or a header keyword with trailing letters (`policyX`) | |
 | an unknown keyword | with the enclosing block's type |
 
 Every diagnostic MUST carry a line number. A message without one is not a
@@ -211,6 +225,8 @@ performs one of its jobs.
 | `untrusted-reaches-sink` | warning | Untrusted data can reach this sink with no endorsement or consent required |
 | `trapped-source` | warning | This source's data can reach no declared sink |
 | `unused-declassifier` | warning | No source-to-sink flow needs this declassification |
+| `unguarded-endorsement` | error | A declaration grants an endorsement with no `requires consent`: it converts untrusted data to endorsed data automatically |
+| `unguarded-public-declassification` | error | A declaration makes data readable by everyone with no `requires consent` |
 
 ### The soundness contract
 
@@ -229,11 +245,17 @@ every declassifier's grants unioned onto it. If a sink cannot accept even
 that, no execution reaches it. That is a fact about the policy, not an
 estimate.
 
-The converse does not hold and MUST NOT be claimed. A sink that accepts the
-optimistic label may still be unreachable in practice, because a real
-pipeline joins several sources and drives the label back down. An
-implementation MUST NOT report that a sink *is* reachable — only that it is
-not provably unreachable.
+The converse does not hold and MUST NOT be claimed for a *pipeline*. A sink
+that accepts the optimistic label may still be unreachable in practice, because
+a real pipeline joins several sources and drives the label back down. An
+implementation MUST NOT report that a given pipeline reaches a sink — only that
+it is not provably unreachable.
+
+`untrusted-reaches-sink` makes a narrower statement and is exact for it: *this
+single source can reach this sink through some order of declassifiers, consent
+set aside*. A join only restricts a label, so a single source is the best case,
+and the optimistic label is attained by applying the declassifiers. The reference
+implementation checks this against an exhaustive search on generated policies.
 
 ### `untrusted-reaches-sink`
 
@@ -246,6 +268,10 @@ An implementation MUST NOT raise it for a sink that declares
 `requires endorsed(...)` or `requires consent(...)`: in the first case
 injected content cannot supply the vouch, and in the second a human stands in
 the way.
+
+The first case holds only because `unguarded-endorsement` is an error: an
+endorser that nobody answers for *can* supply the vouch. A policy that passes
+the analysis has no such endorser.
 
 ## 5. Canonical JSON form
 

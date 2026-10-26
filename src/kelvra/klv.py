@@ -14,6 +14,7 @@ offending text, and where possible what to do instead.
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -69,9 +70,11 @@ class _Line:
 @dataclass
 class _Warnings:
     items: list[str] = field(default_factory=list)
+    located: list[tuple[int, str]] = field(default_factory=list)
 
     def add(self, message: str, line: int) -> None:
         self.items.append(f"line {line}: {message}")
+        self.located.append((line, message))
 
 
 # -- lexing -----------------------------------------------------------------
@@ -81,11 +84,53 @@ def _strip_comment(raw: str) -> str:
     return raw.split("#", 1)[0].rstrip()
 
 
+# spec/policy-language.md section 1: lines end with LF, CRLF or (tolerated) CR,
+# and nothing else. ``str.splitlines()`` also breaks on U+2028, U+2029, U+0085,
+# VT, FF and the FS/GS/RS separators. A comment containing one of those would
+# end early *for the parser* while most viewers still show a single comment
+# line, so the text a reviewer reads would not be the text that is enforced.
+_LINE_BREAK = re.compile(r"\r\n|\n|\r")
+
+_ALLOWED_CONTROL = ("\t",)
+
+
+def _forbidden_character(raw: str) -> str | None:
+    """The first character that must not appear anywhere in a policy file.
+
+    Rejected, comments included: control characters (Cc), format characters
+    such as bidirectional overrides and zero-width characters (Cf), and the
+    Unicode line and paragraph separators (Zl, Zp). None has a legitimate use
+    in a declaration language read by humans, and each can make the rendered
+    text differ from the parsed text.
+    """
+    for ch in raw:
+        if ch in _ALLOWED_CONTROL:
+            continue
+        if unicodedata.category(ch) in ("Cc", "Cf", "Zl", "Zp"):
+            return ch
+    return None
+
+
+def split_lines(text: str) -> list[str]:
+    """Split on the line terminators the specification defines, and no others."""
+    return _LINE_BREAK.split(text)
+
+
 def _scan(text: str) -> list[_Line]:
     lines: list[_Line] = []
     uses_tabs = uses_spaces = False
 
-    for number, raw in enumerate(text.splitlines(), start=1):
+    for number, raw in enumerate(split_lines(text), start=1):
+        bad = _forbidden_character(raw)
+        if bad is not None:
+            raise KlvError(
+                f"forbidden character U+{ord(bad):04X} ({unicodedata.name(bad, 'unnamed')})",
+                number,
+                ascii(raw),
+                "control, invisible and line-separator characters are rejected even "
+                "inside comments: they can make the text a reviewer sees differ from "
+                "the text that is enforced",
+            )
         body = _strip_comment(raw)
         if not body.strip():
             continue
@@ -176,6 +221,9 @@ class ParseResult:
 
     policy: Policy
     warnings: list[str]
+    warning_lines: list[tuple[int, str]]
+    """The same warnings as ``(line, message)``, for tools that place them."""
+
     declaration_lines: dict[str, int]
     """Declaration name to the line it was declared on."""
 
@@ -186,7 +234,9 @@ class ParseResult:
 def parse_detailed(text: str, *, filename: str | None = None) -> ParseResult:
     """Parse, and report where everything was declared."""
     try:
-        lines = _scan(text)
+        # A byte-order mark is an encoding artefact some Windows editors add,
+        # not content; it is the one format character tolerated, once, at the start.
+        lines = _scan(text.removeprefix("\ufeff"))
         if not lines:
             raise KlvError(
                 "empty policy file", 1, "", "expected 'policy <name>' on the first line"
@@ -202,6 +252,7 @@ def parse_detailed(text: str, *, filename: str | None = None) -> ParseResult:
     return ParseResult(
         policy=state.policy,
         warnings=state.warnings.items,
+        warning_lines=list(state.warnings.located),
         declaration_lines=dict(state.declared_at),
         name_lines=dict(state.name_lines),
     )
@@ -291,7 +342,7 @@ class _State:
     def parse_header(self) -> None:
         line = self.peek()
         assert line is not None
-        if not line.text.startswith("policy"):
+        if _keyword(line.text) != "policy":
             raise KlvError(
                 "a policy file must begin with 'policy <name>'",
                 line.number,
@@ -322,9 +373,20 @@ class _State:
 
     def parse_version(self, line: _Line) -> None:
         parts = line.text.split()
-        if len(parts) != 2 or not parts[1].isdigit():
+        # ``str.isdigit()`` is true for characters such as '²' that ``int()``
+        # rejects, and ``int()`` refuses very long digit strings. Both used to
+        # escape as ValueError instead of a located KlvError.
+        if (
+            len(parts) != 2
+            or not parts[1].isascii()
+            or not parts[1].isdigit()
+            or len(parts[1]) > 9
+        ):
             raise KlvError(
-                "'version' takes a single integer", line.number, line.raw, "for example: version 1"
+                "'version' takes a single integer of at most 9 ASCII digits",
+                line.number,
+                line.raw,
+                "for example: version 1",
             )
         self.policy.version = int(parts[1])
 
@@ -390,6 +452,7 @@ class _State:
         purposes = PrincipalSet.all()
         endorsers = PrincipalSet.all()
         seen_confidentiality = False
+        seen_integrity = False
 
         for line in self.block(header):
             keyword = _keyword(line.text)
@@ -404,6 +467,15 @@ class _State:
                 seen_confidentiality = True
                 readers, purposes = self.parse_confidentiality(line)
             elif keyword == "integrity":
+                if seen_integrity:
+                    raise KlvError(
+                        f"source {name!r} declares integrity twice",
+                        line.number,
+                        line.raw,
+                        "a source carries exactly one integrity label; letting the last "
+                        "one win would let a later line quietly undo 'untrusted'",
+                    )
+                seen_integrity = True
                 endorsers = self.parse_integrity(line)
             else:
                 raise KlvError(
@@ -422,6 +494,12 @@ class _State:
                 "the failure this whole system exists to prevent",
             )
 
+        if not seen_integrity:
+            self.warnings.add(
+                f"source {name!r} declares no integrity and defaults to trusted; "
+                "say 'integrity trusted' or 'integrity untrusted' so the choice is visible",
+                header.number,
+            )
         self.policy.sources[name] = Source(name, Label(readers, endorsers, purposes))
 
     def parse_confidentiality(self, line: _Line) -> tuple[PrincipalSet, PrincipalSet]:
@@ -485,6 +563,13 @@ class _State:
                 parts = line.text.split()
                 if len(parts) != 2:
                     raise KlvError("'for' takes a single purpose", line.number, line.raw)
+                if purpose is not None:
+                    raise KlvError(
+                        f"sink {name!r} declares 'for' twice",
+                        line.number,
+                        line.raw,
+                        "a sink serves exactly one purpose",
+                    )
                 purpose = self.purpose_of(parts[1], line)
             else:
                 raise KlvError(
@@ -553,6 +638,15 @@ class _State:
                 raise KlvError(
                     "'consent' takes exactly one principal", line.number, line.raw
                 )
+            if consent is not None:
+                raise KlvError(
+                    "a second 'requires consent' on the same declaration",
+                    line.number,
+                    line.raw,
+                    f"consent from {consent!r} is already required here; only one "
+                    "consenting principal is supported, and keeping the last one "
+                    "would silently drop the other",
+                )
             self.principals_of(names, line)
             return endorsement, names[0]
         raise KlvError(
@@ -574,12 +668,17 @@ class _State:
         grants_endorsement = PrincipalSet.none()
         consent: str | None = None
         seen_to = False
+        expects: Label | None = None
 
         for line in self.block(header):
             clause = _keyword(line.text)
             if clause == "from":
-                continue  # documentation; see spec/policy-language.md section 3
-            if clause == "to":
+                # Documentation, not enforcement (spec/policy-language.md
+                # section 3) -- but it is read, so a typo in it is an error and
+                # a use outside it can be recorded.
+                bound = self.parse_from(line)
+                expects = bound if expects is None else expects.join(bound)
+            elif clause == "to":
                 seen_to = True
                 grants_readers, grants_endorsement = self.parse_grant(
                     line, grants_readers, grants_endorsement
@@ -587,6 +686,16 @@ class _State:
             elif clause == "audit":
                 self.parse_audit(line)
             elif clause == "requires":
+                asked = _call(line.text[len("requires") :].strip(), line)
+                if asked is not None and asked[0] == "endorsed":
+                    raise KlvError(
+                        f"'requires endorsed(...)' has no effect in {keyword} {name!r}",
+                        line.number,
+                        line.raw,
+                        "a declassifier cannot demand an endorsement of its input; put "
+                        "'requires endorsed(...)' on the sink that needs it, or "
+                        "'requires consent(...)' here",
+                    )
                 _, consent = self.parse_requirement(line, PrincipalSet.none(), consent)
             else:
                 raise KlvError(
@@ -621,6 +730,25 @@ class _State:
             grants_readers=grants_readers,
             grants_endorsement=grants_endorsement,
             requires_consent_from=consent,
+            expects=expects,
+        )
+
+    def parse_from(self, line: _Line) -> Label:
+        """``from`` as an upper bound on the data: at least this restrictive."""
+        rest = line.text[len("from") :].strip()
+        if rest == "public":
+            return Label()
+        if rest == "untrusted":
+            return Label(endorsers=PrincipalSet.none())
+        call = _call(rest, line)
+        if call is not None and call[0] == "confidential":
+            return Label(readers=self.principals_of(call[1], line))
+        if call is not None and call[0] == "endorsed":
+            return Label(endorsers=self.principals_of(call[1], line))
+        raise KlvError(
+            "'from' takes public, untrusted, confidential(...) or endorsed(...)",
+            line.number,
+            line.raw,
         )
 
     def parse_grant(
