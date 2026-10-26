@@ -25,10 +25,9 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 
-# The core has no third-party dependencies, on purpose. The MCP Python SDK
-# ships its stable v2 on 2026-07-28 alongside a new specification release;
-# binding the core to a dependency that turns over on that date would buy an
-# immediate rewrite. MCP stays behind an optional adapter.
+# The core has no third-party dependencies, on purpose. The MCP gateway speaks
+# the protocol's JSON-RPC itself rather than binding to an SDK that turns over
+# with each specification release.
 dependencies = []
 
 [project.optional-dependencies]
@@ -37,12 +36,18 @@ dependencies = []
 # protocol would be work spent away from the part with value. The pure
 # functions in kelvra.lsp run without it; only `kelvra lsp` needs it.
 lsp = ["pygls>=2.1,<3"]
-mcp = ["mcp>=2.0.0"]
-otel = ["opentelemetry-api>=1.42.0", "opentelemetry-sdk>=1.42.0"]
+# Ed25519 signatures. The standard library has none, and writing a signature
+# scheme by hand is the one thing to avoid; imported only when used.
+sign = ["cryptography>=43"]
+# There used to be `mcp` and `otel` extras here with no code behind them. They
+# pulled 40 packages into the lockfile -- and 46 of the 47 advisories a
+# dependency audit found -- for nothing that ran. An extra comes back with the
+# code that uses it.
 # Pinned exactly. An unpinned linter breaks CI on a day nobody changed
 # anything, because its default rule set moved underneath the build. Bump it
 # deliberately, in its own commit, with the findings it produces.
-dev = ["pytest>=8.0,<9", "ruff==0.16.0", "jsonschema>=4.20"]
+# pytest 9.0.3 is the first release without GHSA-6w46-j5rx-g56g (tmpdir handling).
+dev = ["pytest>=9.0.3,<10", "ruff==0.16.0", "jsonschema>=4.20"]
 
 [project.scripts]
 kelvra = "kelvra.cli:main"
@@ -56,6 +61,9 @@ packages = ["src/kelvra"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Many tests produce a record on purpose without a key; the warning is covered by
+# its own test (pytest.warns), and would otherwise bury every other warning.
+filterwarnings = ["ignore:no signing key:kelvra.provenance.UnsignedRecordWarning"]
 pythonpath = ["src"]
 
 [tool.ruff]
