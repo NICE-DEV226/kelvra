@@ -1,0 +1,170 @@
+{
+  "chain_head": "sha256:fe290e65d87d0efea6360bea0e4f4556421a827ec770459aabc775f115d00b39",
+  "ended_at": "2026-01-01T00:00:08.000+00:00",
+  "events": [
+    {
+      "at": "2026-01-01T00:00:00.000+00:00",
+      "kind": "read",
+      "label": {
+        "endorsers": [],
+        "purposes": [
+          "support"
+        ],
+        "readers": [
+          "customer"
+        ]
+      },
+      "prev": "sha256:3a1d6bf6712fd672c3d618e5e326096c92db5bc8e72db0250f7951d3c872c182",
+      "seq": 0,
+      "source": "inbox.imap"
+    },
+    {
+      "at": "2026-01-01T00:00:01.000+00:00",
+      "kind": "read",
+      "label": {
+        "endorsers": "*",
+        "purposes": [
+          "support"
+        ],
+        "readers": [
+          "customer",
+          "support_team"
+        ]
+      },
+      "prev": "sha256:d3b0f7a26b34576c5a84768605ba7916a2b75ee690c377976309f322d77275aa",
+      "seq": 1,
+      "source": "crm.record"
+    },
+    {
+      "at": "2026-01-01T00:00:02.000+00:00",
+      "inputs": [
+        "inbox.imap",
+        "crm.record"
+      ],
+      "kind": "join",
+      "prev": "sha256:482a0f4c63e40b9dc9a89ddc8ce9038ffbf5960529efe82af5040b0b4e6758e1",
+      "result": {
+        "endorsers": [],
+        "purposes": [
+          "support"
+        ],
+        "readers": [
+          "customer"
+        ]
+      },
+      "seq": 2,
+      "site": "agent.plan"
+    },
+    {
+      "at": "2026-01-01T00:00:03.000+00:00",
+      "kind": "deny",
+      "label": {
+        "endorsers": [],
+        "purposes": [
+          "support"
+        ],
+        "readers": [
+          "customer"
+        ]
+      },
+      "prev": "sha256:63626ce69ebca501e6f4ae37cd6ccf4028eb8e08f95481e69c0a9517d65778aa",
+      "reasons": [
+        "audience customer,support_team is not permitted to read data readable by customer",
+        "sink requires endorsement by reviewer but got untrusted data"
+      ],
+      "seq": 3,
+      "sink": "crm.write"
+    },
+    {
+      "after": {
+        "endorsers": [
+          "reviewer"
+        ],
+        "purposes": [
+          "support"
+        ],
+        "readers": [
+          "customer"
+        ]
+      },
+      "at": "2026-01-01T00:00:04.000+00:00",
+      "before": {
+        "endorsers": [],
+        "purposes": [
+          "support"
+        ],
+        "readers": [
+          "customer"
+        ]
+      },
+      "consent_from": "reviewer",
+      "declassifier": "human_review",
+      "from_check": "within",
+      "kind": "declassify",
+      "prev": "sha256:0d55968a2a9159135429160bbfe00c0a41f487325cafa51d43ee33ec183b02f7",
+      "seq": 4
+    },
+    {
+      "at": "2026-01-01T00:00:05.000+00:00",
+      "context": "declassify:human_review",
+      "granted": true,
+      "granted_by": "dr.martin",
+      "kind": "consent",
+      "label": {
+        "endorsers": [],
+        "purposes": [
+          "support"
+        ],
+        "readers": [
+          "customer"
+        ]
+      },
+      "prev": "sha256:e1ebe0ba321d78ea7a22281dd8deb84b0fb89ea92d57a4f947d33e40e6414cfa",
+      "principal": "reviewer",
+      "seq": 5
+    },
+    {
+      "at": "2026-01-01T00:00:06.000+00:00",
+      "kind": "allow",
+      "label": {
+        "endorsers": "*",
+        "purposes": [
+          "support"
+        ],
+        "readers": [
+          "customer",
+          "support_team"
+        ]
+      },
+      "prev": "sha256:2732961eac5d8f29bd466b5f68f526fb16b89985e864afa79031d6662ae3ce6e",
+      "seq": 6,
+      "sink": "slack.support_channel"
+    },
+    {
+      "at": "2026-01-01T00:00:07.000+00:00",
+      "kind": "refuse",
+      "name": "inbox.imap2",
+      "operation": "read",
+      "prev": "sha256:8db9e67c923071e868f46abf0371a7ee59ddfd1bae31adaf7d30304b270789d2",
+      "reason": "undeclared",
+      "seq": 7
+    }
+  ],
+  "kelvra_version": "0.2.0",
+  "policy": {
+    "fingerprint": "sha256:abababababababababababababababababababababababababababababababab",
+    "name": "VectorPolicy",
+    "version": 1
+  },
+  "run_id": "00000000-0000-4000-8000-000000000001",
+  "signature": "hmac-sha256:bfa6800e3bc8f59b7eddf76eb863b9cfb493aaa427a9d858e5304137dd532d7b",
+  "started_at": "2026-01-01T00:00:00.000+00:00",
+  "summary": {
+    "allowed": 1,
+    "consents": 1,
+    "declassifications": 1,
+    "denied": 1,
+    "refused": 1,
+    "sources_read": 2
+  }
+}
