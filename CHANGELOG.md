@@ -20,6 +20,11 @@ an exact version.
   hash chain and the signature recomputed with `hashlib` alone, the text of the
   one-page report, each way a journal file can be wrong, and how the journal
   writes (private file mode, partial writes, flushing, failure messages).
+- `tests/test_taint_details.py` does the same for `taint.py`: the transform of a
+  declassification is applied, the consent provider is told whom it is asked and
+  for what, origins and sites reach the ledger, `signer` with `signing_key` is
+  refused, the unsigned-record warning points at the caller, and the identity
+  length limits are exact.
 
 ### Security
 
