@@ -1,6 +1,6 @@
 # Kelvra — Threat model
 
-**Status: draft. Nothing here has been validated against an implementation, because there is no implementation.**
+**Status: draft. A reference implementation exists and has been audited (see CHANGELOG), but no adapter does: the properties below hold for the library called cooperatively, not yet for a deployed agent.**
 
 This document exists because a security mechanism without a named adversary cannot be evaluated. If you take one thing from it, take [section 3](#3-what-kelvra-does-not-defend-against) — what Kelvra explicitly does *not* defend against.
 
@@ -104,7 +104,17 @@ P1–P5 assume the following components are correct. **This list is the system's
 | Source label declarations | Nothing verifies a source declared `public` really is | Silent leak, invisible to audit |
 | Declassifier implementations | They do the actual anonymization | N2 |
 | Provenance signing key | It underpins P4 | Audit proof becomes forgeable |
-| Enforcement point (MCP gateway or interpreter) | It applies decisions | Complete bypass |
+| Enforcement point (the [gateway](gateway.md), or an interpreter) | It applies decisions | Complete bypass |
+| The holder of the `Kelvra` authority object | `declassify` and `endorse` are the only places a label is relaxed | An input that can reach them launders itself |
+
+**Capability boundary.** The reference implementation gives model-driven code an
+`AgentSession` (`read`, `model_call`, `emit`) and keeps `declassify`, the policy,
+the ledger and `record` on the `Kelvra` object the integrator holds. This is a
+capability boundary inside one process, not a sandbox: Python cannot stop code
+that reaches for private attributes. It removes the *ordinary* route (a method
+on the object an agent is handed) and is meant to be backed by a process
+boundary in an adapter. Every in-process guarantee in this document assumes
+the code that holds the session is not hostile (assumption H1 of the audit).
 
 **The weakest link is the second one.** Initial source labeling is declarative: someone asserts that a given source holds confidential data. If that assertion is wrong or forgotten, everything else works correctly and accomplishes nothing.
 

@@ -8,7 +8,7 @@ For what Kelvra does not *defend against*, see the [threat model](spec/threat-mo
 
 ## The big one
 
-**There is no implementation.** No instrumentation, no parser, no emitted record, not one line of working code. The design has more documents than it has functions. Treat every claim here as intent, not as a description of software.
+**There is a reference implementation and no integration.** The parser, analysis, label algebra, in-process runtime, provenance record and language server exist and are tested. What exists beyond the library is one enforcement point: a stdio proxy for MCP servers ([gateway](spec/gateway.md)), which checks tool calls against the *conversation's* label and not against each argument. It has been run against the official MCP SDK's client and server (versions 1.30.0 and 2.3.0), not against any MCP application. There is no framework binding, no HTTP transport, and nothing that stops an agent which can reach its tools without going through the proxy. In-process use is therefore *cooperative*: it holds for code that goes through the session and does not reach into its internals (an `AgentSession` is a capability boundary inside one process, not a sandbox). Treat the guarantees as properties of the library, not of an agent running with it.
 
 ## Unresolved design problems
 
