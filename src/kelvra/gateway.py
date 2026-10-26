@@ -286,6 +286,19 @@ def _refuse_constant(name: str) -> Any:
     raise ValueError(f"{name} is not JSON")
 
 
+def _finite_float(text: str) -> float:
+    """A JSON number that is a finite float, or an error.
+
+    ``1e999`` is valid JSON text, and Python reads it as infinity; written back out
+    it becomes ``Infinity``, which is not JSON, so the gateway would have forwarded
+    a line no strict decoder accepts (found by comparing against Node and jq).
+    """
+    value = float(text)
+    if value != value or value in (float("inf"), float("-inf")):
+        raise ValueError("number out of range")
+    return value
+
+
 def _parse(line: str) -> Any:
     """Parse one JSON-RPC line the strict way, or raise ``ValueError``.
 
@@ -295,7 +308,10 @@ def _parse(line: str) -> Any:
     are refused outright rather than guessed at.
     """
     message = json.loads(
-        line, object_pairs_hook=_reject_duplicates, parse_constant=_refuse_constant
+        line,
+        object_pairs_hook=_reject_duplicates,
+        parse_constant=_refuse_constant,
+        parse_float=_finite_float,
     )
     if isinstance(message, dict):
         _require_exact_members(message)

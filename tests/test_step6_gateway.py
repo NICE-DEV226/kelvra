@@ -799,3 +799,23 @@ def test_methods_other_than_the_ones_the_gateway_reads_may_use_any_ascii_case():
     f = McpFilter(gateway()[0])
     line = json.dumps({"jsonrpc": "2.0", "id": 2, "method": "completion/Complete", "params": {}})
     assert f.client_to_server(line).forward
+
+
+# -- numbers that are not JSON once written back out ---------------------------
+
+
+@pytest.mark.parametrize("number", ["1e999", "-1e999", "1E400", "1e99999999"])
+def test_a_number_that_overflows_is_refused_not_forwarded_as_infinity(number):
+    """``1e999`` is valid JSON that Python reads as infinity; re-serialised it is the token
+    ``Infinity``, which no strict decoder accepts. Found by the differential test."""
+    f = McpFilter(gateway()[0])
+    line = '{"jsonrpc":"2.0","id":1,"method":"ping","params":{"x":' + number + "}}"
+    out = f.client_to_server(line)
+    assert out.forward == () and json.loads(out.reply[0])["error"]["code"] == -32700
+
+
+def test_ordinary_numbers_survive_as_the_same_numbers():
+    f = McpFilter(gateway()[0])
+    line = '{"jsonrpc":"2.0","id":1,"method":"ping","params":{"a":1,"b":-2.5,"c":1e2,"d":0}}'
+    (forwarded,) = f.client_to_server(line).forward
+    assert json.loads(forwarded)["params"] == {"a": 1, "b": -2.5, "c": 100.0, "d": 0}
