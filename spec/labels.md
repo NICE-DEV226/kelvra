@@ -246,7 +246,11 @@ does:
 - the consent decision MUST be obtained before the flow or the
   declassification takes effect;
 - the decision MUST be recorded with the labels of the data involved,
-  whether granted or refused;
+  whether granted or refused, and with the identity of whoever decided;
+- a grant that names nobody, or names the agent's own service identity, MUST
+  be treated as a refusal;
+- only an explicit boolean grant counts: a value that is merely truthy (for
+  example the coroutine an `async` provider returns) MUST NOT be read as consent;
 - absence of a configured consent mechanism MUST be treated as refusal, never
   as approval.
 

@@ -10,6 +10,7 @@ from kelvra import (
     PrincipalSet,
     Sink,
     Source,
+    approved_by,
     declassify_to,
     endorse_as,
     verify,
@@ -51,7 +52,11 @@ def build_policy() -> Policy:
 
 @pytest.fixture
 def k() -> Kelvra:
-    return Kelvra(build_policy(), signing_key=b"test-key", consent=lambda p, c: True)
+    return Kelvra(
+        build_policy(),
+        signing_key=b"test-key-0123456789",
+        consent=approved_by("test-reviewer"),
+    )
 
 
 # -- the attack -------------------------------------------------------------
@@ -183,10 +188,10 @@ def test_record_is_signed_and_tamper_evident(k):
         k.emit("crm.write", email)
 
     record = k.record()
-    assert verify(record, b"test-key")
+    assert verify(record, b"test-key-0123456789")
 
     record["events"][0]["source"] = "somewhere.innocent"
-    assert not verify(record, b"test-key"), "alteration must be detectable"
+    assert not verify(record, b"test-key-0123456789"), "alteration must be detectable"
 
 
 def test_record_is_not_verifiable_with_the_wrong_key(k):
