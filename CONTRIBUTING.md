@@ -35,19 +35,25 @@ yet, and the whole product thesis rests on the answer.
 Feature PRs against the specification. It is unstable by design and moving;
 opening an issue first will save you the work.
 
-Optimisation. The enforcement path costs about 4.5 µs per check, roughly
-four orders of magnitude below the LLM call it sits beside. It is not the
-bottleneck and will not become one soon.
+Optimisation. On one development machine (Python 3.14, Linux, not a
+benchmark suite) the flow check itself takes about 1 µs, and a recorded
+`declassify` plus `emit` -- ledger entry, hash chain and all -- about 60 µs.
+Both are orders of magnitude below the LLM call they sit beside, so it is not
+the bottleneck; if you find a case where it is, a reproducible number is more
+useful than a patch.
 
 Adding dependencies to the core. It has none on purpose, and that is a
-constraint rather than an oversight.
+constraint rather than an oversight. Optional extras (`lsp`, `sign`) have to
+earn their place the same way, and one with no code behind it does not stay:
+the `mcp` and `otel` extras that once did pulled 40 packages, and almost every
+advisory a dependency audit found, into the lockfile for nothing that ran.
 
 ## Working on the code
 
 ```bash
 git clone https://github.com/NICE-DEV226/kelvra.git
 cd kelvra
-pip install -e ".[dev]"
+pip install -e ".[dev,lsp]"   # lsp: otherwise the language-server protocol test skips
 pytest
 python examples/support_agent/demo.py
 ```
@@ -55,11 +61,29 @@ python examples/support_agent/demo.py
 Before opening a PR:
 
 ```bash
-pytest && ruff check src tests examples
+pytest && ruff check src tests examples evaluation
 ```
 
-CI runs both on Python 3.10 and 3.13, plus the demo, plus a check that the
-private `docs/` directory has not been committed.
+CI runs both on Linux, macOS and Windows with Python 3.10, 3.13 and 3.14, plus
+the demo, the adversarial evaluation, `kelvra check` on every policy in the
+repository, and a check that the private `docs/` directory has not been
+committed. Text files are read and written as UTF-8 with an explicit
+`encoding=`; a test fails if one is not.
+
+### Where things live
+
+| You want to change | Look in | Its tests |
+|---|---|---|
+| The label algebra and flow rule | `src/kelvra/labels.py`, `policy.py` (`check_flow`) | `test_labels.py`, `test_spec_conformance.py` |
+| The `.klv` grammar or its errors | `src/kelvra/klv.py`, `spec/policy-language.md` | `test_klv.py`, `test_step1_hardening.py` |
+| What `kelvra check` finds | `src/kelvra/analysis.py` | `test_analysis.py` |
+| Enforcement, consent, declassification | `src/kelvra/taint.py` | `test_flow.py`, `test_step*_*.py` |
+| The audit record and `verify_record` | `src/kelvra/provenance.py`, `spec/provenance.md`, `spec/provenance.schema.json` | `test_provenance_spec.py`, `test_step2_provenance.py` |
+| Editor support | `src/kelvra/lsp.py`, `editors/vscode/` | `test_lsp.py`, `test_editor_grammar.py` |
+
+`tests/test_audit_regressions.py` holds the properties an independent audit
+found violated, each stated from the specification rather than from the code.
+Treat a failure there as a regression of a known defect, not as a flaky test.
 
 ### House rules
 
@@ -70,6 +94,16 @@ disagree, the specification is the one that is wrong, and both get fixed.
 **Worked examples in the spec are executed.** `tests/test_spec_conformance.py`
 runs every example table in `spec/labels.md`. Add examples there and they
 become tests.
+
+**A safeguard that does nothing must be an error, not a no-op.** A clause that
+parses and then has no effect (a repeated `integrity`, a `requires` that the
+runtime ignores) lets a reader believe in a control that is not there. Reject
+it, with a line number.
+
+**What a reviewer reads must be what is enforced.** Anything that lets the
+parsed text differ from the displayed text -- control characters, invisible or
+bidirectional characters, non-standard line separators -- is rejected, comments
+included.
 
 **Never weaken the join rule to make something pass.** If a label is too
 restrictive to be useful, the answer is a declared declassifier or a

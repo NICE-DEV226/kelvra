@@ -32,7 +32,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from .labels import Label
+from .labels import Label, PrincipalSet
 from .policy import Policy, Sink, check_flow
 
 Severity = Literal["error", "warning"]
@@ -47,6 +47,8 @@ class Finding:
     subject: str
     message: str
     hint: str = ""
+    name: str = ""
+    """The bare name of the sink, source or declassifier the finding is about."""
 
     def __str__(self) -> str:
         out = f"{self.severity}[{self.code}] {self.subject}: {self.message}"
@@ -55,25 +57,35 @@ class Finding:
         return out
 
 
-def _most_permissive(label: Label, policy: Policy) -> Label:
-    """The label after every declassifier has been applied.
+Grants = tuple[PrincipalSet, PrincipalSet, PrincipalSet]
+
+
+def _grants(policy: Policy, exclude: str | None = None) -> Grants:
+    """Everything every declassifier (bar ``exclude``) can add, as one union per axis.
 
     Declassifiers only ever union in grants, and union is commutative and
-    idempotent, so applying all of them gives the upper bound directly. There
-    is no need to search subsets.
+    idempotent, so the sum of all of them is the upper bound for any source.
+    Computing it once per policy, instead of once per source and sink pair, is
+    what keeps the analysis from growing with the fourth power of the policy.
     """
-    readers = label.readers
-    endorsers = label.endorsers
-    purposes = label.purposes
-    for d in policy.declassifiers.values():
+    readers = endorsers = purposes = PrincipalSet.none()
+    for name, d in policy.declassifiers.items():
+        if name == exclude:
+            continue
         readers = readers | d.grants_readers
         endorsers = endorsers | d.grants_endorsement
         purposes = purposes | d.grants_purposes
-    return Label(readers, endorsers, purposes)
+    return readers, endorsers, purposes
 
 
-def _reaches(label: Label, sink: Sink, policy: Policy) -> bool:
-    return check_flow(_most_permissive(label, policy), sink).allowed
+def _most_permissive(label: Label, policy: Policy, grants: Grants | None = None) -> Label:
+    """The label after every declassifier has been applied."""
+    readers, endorsers, purposes = _grants(policy) if grants is None else grants
+    return Label(label.readers | readers, label.endorsers | endorsers, label.purposes | purposes)
+
+
+def _reaches(label: Label, sink: Sink, policy: Policy, grants: Grants | None = None) -> bool:
+    return check_flow(_most_permissive(label, policy, grants), sink).allowed
 
 
 def analyse(policy: Policy) -> list[Finding]:
@@ -83,10 +95,71 @@ def analyse(policy: Policy) -> list[Finding]:
     findings += _injection_surface(policy)
     findings += _trapped_sources(policy)
     findings += _unused_declassifiers(policy)
+    findings += _unguarded_relaxations(policy)
     return findings
 
 
 # -- the findings -----------------------------------------------------------
+
+
+def _unguarded_relaxations(policy: Policy) -> list[Finding]:
+    """A declassifier that relaxes a label with nobody answerable for it.
+
+    ``Declassifier.apply`` is a set union and checks nothing about the data. So
+    an ``endorse`` with no ``requires consent`` is an automatic conversion of
+    untrusted into endorsed, and a ``declassify ... to public`` with no consent
+    is an automatic conversion of confidential into public. Every other
+    safeguard in the policy -- a sink that demands an endorsement, an audience
+    that excludes the world -- is then exactly one call away from being
+    satisfied by whoever can call it.
+
+    This is why ``_injection_surface`` may skip a sink that demands an
+    endorsement ("injected content cannot supply the vouch"): that premise holds
+    only if obtaining the vouch involves someone. These findings are the
+    check that it does.
+
+    Definite, like the others: it reads one declaration, with no execution
+    to consider.
+    """
+    findings = []
+    for name, d in sorted(policy.declassifiers.items()):
+        if d.requires_consent_from is not None:
+            continue
+        if not d.grants_endorsement.is_empty:
+            findings.append(
+                Finding(
+                    code="unguarded-endorsement",
+                    severity="error",
+                    subject=f"declassifier {name!r}",
+                    name=name,
+                    message=(
+                        "grants an endorsement with no consent required, so it turns "
+                        "untrusted data into endorsed data automatically"
+                    ),
+                    hint=(
+                        "add 'requires consent(<principal>)' naming whoever actually "
+                        "reviews the data; an endorsement nobody answers for does not "
+                        "stop an injection, it only renames it"
+                    ),
+                )
+            )
+        if d.grants_readers.is_all:
+            findings.append(
+                Finding(
+                    code="unguarded-public-declassification",
+                    severity="error",
+                    subject=f"declassifier {name!r}",
+                    name=name,
+                    message=(
+                        "makes data readable by everyone with no consent required"
+                    ),
+                    hint=(
+                        "publishing is irreversible; add 'requires consent(<principal>)' "
+                        "or widen to a named audience instead of 'public'"
+                    ),
+                )
+            )
+    return findings
 
 
 def _unsatisfiable_sinks(policy: Policy) -> list[Finding]:
@@ -98,8 +171,9 @@ def _unsatisfiable_sinks(policy: Policy) -> list[Finding]:
     an agent that mysteriously never does one of its jobs.
     """
     findings = []
+    grants = _grants(policy)
     for name, sink in sorted(policy.sinks.items()):
-        if any(_reaches(s.label, sink, policy) for s in policy.sources.values()):
+        if any(_reaches(s.label, sink, policy, grants) for s in policy.sources.values()):
             continue
 
         if not policy.sources:
@@ -111,6 +185,7 @@ def _unsatisfiable_sinks(policy: Policy) -> list[Finding]:
                 code="unsatisfiable-sink",
                 severity="error",
                 subject=f"sink {name!r}",
+                name=name,
                 message=(
                     "no declared source can reach this sink, even after applying "
                     "every declassifier"
@@ -125,14 +200,7 @@ def _why_unsatisfiable(policy: Policy, sink: Sink) -> str:
     """Name the axis that blocks every source, when they all agree."""
     blocking: set[str] = set()
     for source in policy.sources.values():
-        decision = check_flow(_most_permissive(source.label, policy), sink)
-        for reason in decision.reasons:
-            if "permitted to read" in reason:
-                blocking.add("audience")
-            elif "endorsement" in reason:
-                blocking.add("endorsement")
-            elif "purpose" in reason:
-                blocking.add("purpose")
+        blocking.update(check_flow(_most_permissive(source.label, policy), sink).axes)
 
     if blocking == {"audience"}:
         return (
@@ -166,6 +234,7 @@ def _injection_surface(policy: Policy) -> list[Finding]:
     if not untrusted:
         return findings
 
+    grants = _grants(policy)
     for sink_name, sink in sorted(policy.sinks.items()):
         if not sink.requires_endorsement.is_empty:
             continue  # the sink demands a vouch; injection cannot supply one
@@ -173,7 +242,9 @@ def _injection_surface(policy: Policy) -> list[Finding]:
             continue  # a human stands in the way
 
         reachable = sorted(
-            name for name, source in untrusted.items() if _reaches(source.label, sink, policy)
+            name
+            for name, source in untrusted.items()
+            if _reaches(source.label, sink, policy, grants)
         )
         if not reachable:
             continue
@@ -183,6 +254,7 @@ def _injection_surface(policy: Policy) -> list[Finding]:
                 code="untrusted-reaches-sink",
                 severity="warning",
                 subject=f"sink {sink_name!r}",
+                name=sink_name,
                 message=(
                     "reachable by untrusted data from "
                     + ", ".join(repr(n) for n in reachable)
@@ -208,14 +280,16 @@ def _trapped_sources(policy: Policy) -> list[Finding]:
     if not policy.sinks:
         return findings
 
+    grants = _grants(policy)
     for name, source in sorted(policy.sources.items()):
-        if any(_reaches(source.label, sink, policy) for sink in policy.sinks.values()):
+        if any(_reaches(source.label, sink, policy, grants) for sink in policy.sinks.values()):
             continue
         findings.append(
             Finding(
                 code="trapped-source",
                 severity="warning",
                 subject=f"source {name!r}",
+                name=name,
                 message="data from this source can reach no declared sink",
                 hint=(
                     "this is safe but probably not intended -- the source is either "
@@ -237,20 +311,15 @@ def _unused_declassifiers(policy: Policy) -> list[Finding]:
     if not policy.sources or not policy.sinks:
         return findings
 
+    with_all = _grants(policy)
     for name in sorted(policy.declassifiers):
-        without = Policy(
-            name=policy.name,
-            version=policy.version,
-            sources=dict(policy.sources),
-            sinks=dict(policy.sinks),
-            declassifiers={k: v for k, v in policy.declassifiers.items() if k != name},
-        )
+        without = _grants(policy, exclude=name)
 
         needed = False
         for source in policy.sources.values():
             for sink in policy.sinks.values():
-                if _reaches(source.label, sink, policy) and not _reaches(
-                    source.label, sink, without
+                if _reaches(source.label, sink, policy, with_all) and not _reaches(
+                    source.label, sink, policy, without
                 ):
                     needed = True
                     break
@@ -263,6 +332,7 @@ def _unused_declassifiers(policy: Policy) -> list[Finding]:
                     code="unused-declassifier",
                     severity="warning",
                     subject=f"declassifier {name!r}",
+                    name=name,
                     message="no source-to-sink flow requires this declassification",
                     hint=(
                         "a declassifier is the only place a leak can happen, so an "
@@ -292,11 +362,12 @@ def describe_reachability(policy: Policy) -> list[str]:
     see, and it is the same computation the findings run on.
     """
     lines = []
+    grants = _grants(policy)
     for sink_name, sink in sorted(policy.sinks.items()):
         reachable = sorted(
             name
             for name, source in policy.sources.items()
-            if _reaches(source.label, sink, policy)
+            if _reaches(source.label, sink, policy, grants)
         )
         direct = sorted(
             name

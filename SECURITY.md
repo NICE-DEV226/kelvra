@@ -2,11 +2,16 @@
 
 ## Current scope
 
-Kelvra is at the specification stage. **There is no code, therefore no vulnerabilities in code.**
+Kelvra is pre-alpha. It has a small reference implementation (`src/kelvra/`: parser, analysis, runtime, provenance, language server) and **no deployment anyone should rely on**, so both implementation bugs and design flaws are in scope.
 
-What can meaningfully be reported today is a **design flaw**: a case where the model described in the [threat model](spec/threat-model.md) or the [architecture](README.md#a-first-look) would fail to hold even if implemented exactly as specified.
+An *implementation* vulnerability is a case where the code does not do what the specification says, or where a safeguard can be bypassed by an input or caller the specification covers. A *design flaw* is a case where the model in the [threat model](spec/threat-model.md) would fail to hold even if implemented exactly as specified.
 
-Examples of what is in scope right now:
+Examples of what is in scope:
+
+- a policy file whose enforced meaning differs from what a reviewer reads;
+- a way to obtain a label, an endorsement or a consent that the specification says cannot be obtained;
+- a provenance record that verifies but misdescribes the run;
+- an input that makes the parser, analysis or verifier raise, hang or crash;
 
 - a flow that satisfies the label rules as written but still leaks;
 - an adversary in [section 2](spec/threat-model.md#2-adversaries-in-scope) that the design does not actually cover, contrary to what is claimed;

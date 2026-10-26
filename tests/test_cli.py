@@ -20,6 +20,7 @@ policy Clean
 principal alice
 source src
     confidential(alice)
+    integrity trusted
 sink out
     accepts confidential(alice)
 """

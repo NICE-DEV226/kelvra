@@ -51,6 +51,7 @@ def cmd_check(args: argparse.Namespace) -> int:
     """Parse and analyse policies. The command CI runs."""
     colour = sys.stdout.isatty() and not args.no_colour
     worst = EXIT_OK
+    reports: list[dict] = []
 
     for path in args.files:
         try:
@@ -59,7 +60,9 @@ def cmd_check(args: argparse.Namespace) -> int:
             print(str(error), file=sys.stderr)
             worst = EXIT_FINDINGS
             continue
-        except OSError as error:
+        except (OSError, UnicodeDecodeError) as error:
+            # UnicodeDecodeError is a ValueError, not an OSError: a binary or
+            # mis-encoded file must not abort the files that follow it.
             print(f"cannot read {path}: {error}", file=sys.stderr)
             worst = EXIT_FINDINGS
             continue
@@ -67,27 +70,24 @@ def cmd_check(args: argparse.Namespace) -> int:
         findings = analyse(policy)
 
         if args.json:
-            print(
-                json.dumps(
-                    {
-                        "file": str(path),
-                        "policy": policy.name,
-                        "version": policy.version,
-                        "fingerprint": policy.fingerprint(),
-                        "parse_warnings": warnings,
-                        "findings": [
-                            {
-                                "code": f.code,
-                                "severity": f.severity,
-                                "subject": f.subject,
-                                "message": f.message,
-                                "hint": f.hint,
-                            }
-                            for f in findings
-                        ],
-                    },
-                    indent=2,
-                )
+            reports.append(
+                {
+                    "file": str(path),
+                    "policy": policy.name,
+                    "version": policy.version,
+                    "fingerprint": policy.fingerprint(),
+                    "parse_warnings": warnings,
+                    "findings": [
+                        {
+                            "code": f.code,
+                            "severity": f.severity,
+                            "subject": f.subject,
+                            "message": f.message,
+                            "hint": f.hint,
+                        }
+                        for f in findings
+                    ],
+                }
             )
         else:
             header = f"{path}  ({policy.name} v{policy.version})"
@@ -104,6 +104,10 @@ def cmd_check(args: argparse.Namespace) -> int:
         if args.strict and (findings or warnings):
             worst = EXIT_FINDINGS
 
+    if args.json and reports:
+        # One file: the object itself, as before. Several: one array, so the
+        # output is a single JSON document a pipeline can parse.
+        print(json.dumps(reports[0] if len(reports) == 1 else reports, indent=2))
     return worst
 
 
@@ -118,11 +122,16 @@ def cmd_explain(args: argparse.Namespace) -> int:
     except KlvError as error:
         print(str(error), file=sys.stderr)
         return EXIT_FINDINGS
+    except (OSError, UnicodeDecodeError) as error:
+        print(f"cannot read {args.file}: {error}", file=sys.stderr)
+        return EXIT_FINDINGS
 
     print(f"{policy.name} v{policy.version}")
     print(f"fingerprint {policy.fingerprint()}")
-    print(f"\n{len(policy.sources)} sources, {len(policy.sinks)} sinks, "
-          f"{len(policy.declassifiers)} declassifiers\n")
+    print(
+        f"\n{len(policy.sources)} sources, {len(policy.sinks)} sinks, "
+        f"{len(policy.declassifiers)} declassifiers\n"
+    )
 
     print("reachability:")
     for line in describe_reachability(policy):
@@ -140,6 +149,50 @@ def cmd_explain(args: argparse.Namespace) -> int:
             print(f"  {name}: grants {' and '.join(grants) or 'nothing'}{consent}")
 
     return EXIT_OK
+
+
+def cmd_gateway(args: argparse.Namespace) -> int:
+    """Run an MCP server behind the gateway: its tool calls are checked against a policy."""
+    from .gateway import (
+        FdLineReader,
+        Gateway,
+        GatewayConfig,
+        GatewayConfigError,
+        McpFilter,
+        run_stdio,
+    )
+    from .klv import parse_file
+    from .taint import Kelvra
+
+    command = [c for c in args.server if c != "--"]
+    if not command:
+        print("kelvra gateway: give the server command after --", file=sys.stderr)
+        return EXIT_USAGE
+    try:
+        policy = parse_file(args.policy)
+        config = GatewayConfig.from_json(args.config.read_text(encoding="utf-8"), policy)
+        kelvra = Kelvra(policy, journal_path=args.journal)
+    except (KlvError, GatewayConfigError, OSError, ValueError) as error:
+        print(f"kelvra gateway: {error}", file=sys.stderr)
+        return EXIT_FINDINGS
+
+    gated = sorted(n for n, s in kelvra.policy.sinks.items() if s.requires_consent_from)
+    if gated:
+        print(
+            f"kelvra gateway: no human is attached, so sinks that require consent "
+            f"will be refused: {', '.join(gated)}",
+            file=sys.stderr,
+        )
+    gateway = Gateway(kelvra, config)
+    try:
+        code = run_stdio(McpFilter(gateway), command, FdLineReader(0), sys.stdout.buffer)
+    finally:
+        if args.record is not None or args.journal is not None:
+            record = kelvra.record()  # closes the run: the journal gets its end line
+            if args.record is not None:
+                args.record.write_text(json.dumps(record, indent=2), encoding="utf-8")
+    sys.stdout.flush()
+    return code
 
 
 def cmd_lsp(args: argparse.Namespace) -> int:
@@ -171,11 +224,28 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--no-colour", action="store_true", help="never colourise")
     check.set_defaults(func=cmd_check)
 
-    explain = sub.add_parser(
-        "explain", help="show which sources can reach which sinks"
-    )
+    explain = sub.add_parser("explain", help="show which sources can reach which sinks")
     explain.add_argument("file", type=Path, metavar="FILE.klv")
     explain.set_defaults(func=cmd_explain)
+
+    gateway = sub.add_parser(
+        "gateway",
+        help="run an MCP server behind a policy-enforcing proxy",
+        description=(
+            "Sits between an MCP client (on stdin/stdout) and a server command. Each "
+            "tools/call is checked against the conversation's label before it reaches "
+            "the server; each result is folded into that label before it reaches the "
+            "client. Unknown tools are refused. Sinks that require consent are refused: "
+            "there is no human to ask. Usage: kelvra gateway --policy P.klv --config "
+            "tools.json -- <server command>"
+        ),
+    )
+    gateway.add_argument("--policy", type=Path, required=True, metavar="FILE.klv")
+    gateway.add_argument("--config", type=Path, required=True, metavar="TOOLS.json")
+    gateway.add_argument("--journal", type=Path, metavar="FILE", help="write events as they happen")
+    gateway.add_argument("--record", type=Path, metavar="FILE", help="write the record at exit")
+    gateway.add_argument("server", nargs=argparse.REMAINDER, help="-- <server command ...>")
+    gateway.set_defaults(func=cmd_gateway)
 
     lsp = sub.add_parser(
         "lsp",

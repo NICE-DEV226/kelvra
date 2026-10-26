@@ -73,7 +73,7 @@ Kelvra is **not another IFC engine**, and deliberately so — see [prior art](#p
 | **Provenance record** | A signed, machine-readable record of every flow an agent run actually took. |
 | **Reference implementation** | One implementation among others. Intentionally not the only one. |
 
-**Your code does not move.** Kelvra attaches to an existing Python / LangChain / MCP agent and describes what it is allowed to do. There is nothing to rewrite and no framework to adopt.
+**Your code does not move.** The intent is that Kelvra attaches to an existing Python / LangChain / MCP agent and describes what it is allowed to do, with nothing to rewrite and no framework to adopt. Today that means calling the Python API (`read`, `model_call`, `emit`); there is no MCP or framework adapter yet. Give the agent only the `AgentSession`: `declassify` and `endorse` stay with whoever builds the pipeline.
 
 ### Why a specification language, not a programming language
 
@@ -94,23 +94,19 @@ This parses and runs. It is [the actual policy](examples/support_agent/policy.kl
 policy SupportAgent
 version 1
 
-principal customer, support_team, billing
-purpose    support, billing_ops
-
-# ---- Sources: what enters, and with which labels ----
+principal customer, support_team, reviewer, model_provider
+purpose   support
 
 source inbox.imap
     confidential(customer) for support
-    integrity untrusted              # arrives from outside
+    integrity untrusted              # arrives from outside; nobody vouches
 
 source crm.customer_record
     confidential(customer, support_team) for support
     integrity trusted
 
-# ---- Sinks: what each exit accepts ----
-
 sink llm.openai
-    accepts public                   # nothing confidential leaves for the model
+    accepts confidential(model_provider)
 
 sink slack.support_channel
     accepts confidential(support_team)
@@ -118,9 +114,7 @@ sink slack.support_channel
 sink crm.write
     accepts confidential(customer, support_team)
     requires endorsed(reviewer)
-    requires consent(customer)
-
-# ---- Declassification: the only permitted crossings ----
+    requires consent(customer)     # a human decision, bound to the data
 
 declassify pii_redaction
     from confidential(customer)
@@ -129,11 +123,17 @@ declassify pii_redaction
 
 endorse human_review
     from untrusted
-    to   trusted
-    requires consent(support_team)
+    to   endorsed(reviewer)
+    requires consent(reviewer)       # an endorsement somebody answers for
+    audit always
+
+declassify share_with_model
+    from confidential(customer)
+    to   confidential(model_provider)
+    audit always
 ```
 
-Thirty lines. An auditor can read them and establish: three constrained exits, **exactly one** declassification, one integrity upgrade, two required consents. The agent's Python is untouched.
+About fifty lines. An auditor can read them and establish: three constrained exits; three crossings, each named — two that widen a reader set and one that grants an endorsement; and who must consent to the endorsement and to the CRM write. The agent's Python is untouched.
 
 Two axes matter here, not one:
 
@@ -146,21 +146,57 @@ Two axes matter here, not one:
 
 ```console
 $ kelvra check policy.klv
-error[unsatisfiable-sink] sink 'crm.write': no declared source can reach this sink,
-  even after applying every declassifier
-  hint: nothing grants endorsement by reviewer; add an 'endorse' declaration that grants it
-
-warning[untrusted-reaches-sink] sink 'slack.support_channel': reachable by untrusted
-  data from 'inbox.imap', with no endorsement or consent required
+policy.klv  (SupportAgent v1)
+warning[untrusted-reaches-sink] sink 'slack.support_channel': reachable by untrusted data
+  from 'inbox.imap', with no endorsement or consent required
   hint: if this sink takes an action rather than just recording one, injected content
         can drive it. Add 'requires endorsed(...)' or 'requires consent(...)'
 ```
 
-The second finding is the shape of the attack, spotted at authoring time by reading the policy graph — no execution, no traffic, no incident.
+That is the shape of the attack, spotted at authoring time by reading the policy graph — no execution, no traffic, no incident. Errors look the same: delete the `requires consent(reviewer)` line under `endorse human_review` and `check` fails with `error[unguarded-endorsement]`, because an endorsement nobody answers for turns untrusted data into endorsed data automatically.
 
-Every finding is **definite**: the analysis reports a problem only when no execution can avoid it, and stays silent otherwise. It is allowed to miss things; it is not allowed to invent them. A checker that cries wolf gets switched off, and a switched-off checker protects nothing. Warnings exit 0 so they never break a build by surprise; `--strict` and `--json` are there for the pipelines that want more.
+The reachability findings are **definite**: the analysis reports a problem only when no execution can avoid it, and stays silent otherwise (checked against an exhaustive search of every source subset and declassifier order on randomly generated small policies). It is allowed to miss things; it is not allowed to invent them. A checker that cries wolf gets switched off, and a switched-off checker protects nothing. Warnings exit 0 so they never break a build by surprise; `--strict` and `--json` are there for the pipelines that want more.
 
 `kelvra explain policy.klv` prints the reachability table and names every declassifier — the complete list of places a leak is possible.
+
+### From Python
+
+```python
+from kelvra import Denied, Kelvra, approved_by, parse_file, verify_record
+
+KEY = b"change-me-this-key-is-32-bytes!!"  # at least 16 bytes; keep it out of the agent
+k = Kelvra(
+    parse_file("examples/support_agent/policy.klv"),
+    signing_key=KEY,
+    consent=approved_by("dr.martin"),  # a real deployment asks a human and names them
+)
+agent = k.agent_session()  # all the agent ever holds: read, model_call, emit
+
+email = agent.read("inbox.imap", "Hi, my order is late.")  # confidential and untrusted
+reply = agent.model_call("agent.reply", email, produce=lambda e: f"re: {e}")
+try:
+    agent.emit("crm.write", reply)  # untrusted data reaching a privileged sink
+except Denied as denied:
+    print(denied)  # flow to 'crm.write' denied: ... sink requires endorsement by reviewer ...
+
+# Whoever builds the pipeline -- never the agent -- can take a declared crossing.
+# Each one is recorded, and `human_review` asks the consent provider first.
+reviewed = k.declassify("human_review", k.declassify("pii_redaction", reply))
+agent.emit("crm.write", reviewed)
+
+record = k.record()  # closes the run: one run, one record
+print(verify_record(record, KEY).ok)  # True: well formed, chained, signed
+```
+
+`declassify` stays on `k`, not on the session, because it is the one operation that relaxes a label. The session is a capability boundary inside one process, not a sandbox: it keeps the *ordinary* route closed, and a process boundary (an adapter) is what keeps the rest closed.
+
+### Behind an MCP server
+
+```console
+$ kelvra gateway --policy policy.klv --config tools.json -- python my_mcp_server.py
+```
+
+An agent that can simply not call a library is not constrained by it, so the [gateway](spec/gateway.md) sits between an MCP client (on stdin/stdout) and the server. Every `tools/call` is checked against the label of the conversation so far *before it reaches the tool*, every result is folded into that label *before it reaches the client*, and a tool the configuration does not name is refused. It is coarse on purpose — a proxy sees calls and results, not the model's context — and stdio-only. [spec/gateway.md](spec/gateway.md) lists, plainly, what it does not cover.
 
 ### In your editor
 
@@ -181,12 +217,15 @@ Install with `pip install "kelvra[lsp]"`. The core still has no dependencies; on
 
 ### The output that matters
 
-Each run emits a signed provenance record — flows taken, declassifications used, consents granted, and **flows denied**. Machine-readable for tooling, summarizable to one page for an auditor. For a compliance team facing a traceability obligation, this record is the product; the policy file is how you configure it.
+Each run emits a provenance record — signed when you give it a key, and Kelvra warns when you do not — covering flows taken, declassifications used, consents granted, and **flows denied**. Machine-readable for tooling, summarizable to one page for an auditor. For a compliance team facing a traceability obligation, this record is the product; the policy file is how you configure it.
 
 Two rules from [its specification](spec/provenance.md) are worth stating here, because both are easy to get wrong in a way nobody notices:
 
 - **The record never contains the data it describes.** No message bodies, no tool arguments, no model output. A log of who touched confidential data, which itself contains that data, is a second copy of the problem — one shipped to auditors and retained for years.
-- **The policy cannot change during a run.** Otherwise a record attests to policy *A* while some flows were checked against *B*, under a signature. A misleading record that looks authoritative is worse than no record.
+- **The policy cannot change during a run.** Otherwise a record attests to policy *A* while some flows were checked against *B*, under a signature. A misleading record that looks authoritative is worse than no record. The session's policy is read-only, and `record()` refuses to sign if it no longer matches the fingerprint taken at the start.
+- **Events are chained.** Each carries a sequence number and the hash of the one before it, so a deleted, reordered or truncated event breaks the record even before anyone checks a signature (`verify_record`).
+
+Two things make the record usable after the fact. A **journal** (`Kelvra(..., journal_path=...)`) writes each event to disk as it happens, so a crashed run still leaves evidence and a finished one can be rebuilt. And an **Ed25519 signature** (`pip install "kelvra[sign]"`, `Ed25519Signer`) lets an auditor verify with a public key alone, which HMAC cannot do.
 
 For live telemetry, the record maps onto [OpenTelemetry GenAI](https://opentelemetry.io/docs/specs/semconv/registry/attributes/gen-ai/) spans rather than inventing a transport. Those conventions are still pre-stable, which is also the opening: a label extension has a real chance upstream while they are in development.
 
@@ -228,13 +267,13 @@ Full detail, including the six adversaries considered and the three placed expli
 
 ## Roadmap
 
-**Phase 0 — Specification** *(current)*
-Threat model, label vocabulary, provenance format. On paper.
+**Phase 0 — Specification** *(drafted; still moving)*
+Threat model, label vocabulary, provenance format.
 
 **Phase 1 — Observation**
 Instrument an existing agent *without enforcing anything*. Label sources, propagate, emit the provenance record. This is immediately useful to a compliance team, and it produces the real flow data needed to design the language against observed behavior rather than imagined syntax.
 
-**Phase 2 — Declaration** *(parser, analysis and language server done)*
+**Phase 2 — Declaration** *(current: parser, analysis, language server and reference runtime exist)*
 What remains is enforcement at the MCP boundary. The language server came before it deliberately: for most languages an LSP is a convenience, but here the diagnostics *are* the security tool — telling someone in their editor that a flow can never be permitted delivers the whole value proposition at authoring time, before anything runs.
 
 **Phase 3 — Standardization**
@@ -247,7 +286,7 @@ No dates. This is an early-stage project moving in public, not a funded roadmap 
 
 ## Contributing
 
-There is no implementation to contribute code to yet. What is genuinely useful:
+There is a small reference implementation, but no adapter yet, and the specification is still moving. What is genuinely useful:
 
 - **prior art we've missed** — especially anything that already closes the gap described above,
 - pushback on the [threat model](spec/threat-model.md), particularly on what's been placed out of scope,

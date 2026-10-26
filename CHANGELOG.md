@@ -9,6 +9,150 @@ an exact version.
 
 ## [Unreleased]
 
+### Security
+
+Findings of the independent audit (`kelvra-audit/`), first hardening step.
+
+- **A comment could hide a declaration (F-02).** The parser split lines with
+  `str.splitlines()` before stripping comments, so U+2028, U+2029, U+0085, VT,
+  FF and FS/GS/RS ended a comment early for the parser while most viewers show
+  one line. Lines now end only at LF, CRLF or CR, and control, format and
+  line-separator characters are rejected everywhere, comments included. A
+  leading BOM is tolerated.
+- **A sealed policy could be edited in place (F-01).** The seal copied the
+  dictionaries but did not freeze them. They are now read-only views, attribute
+  assignment on a sealed policy raises, and `Kelvra.record()` refuses to sign if
+  the policy no longer hashes to the fingerprint taken at session start.
+- **Any truthy value was consent (F-05).** An `async def` provider, `"no"` or
+  `[0]` granted. Only `True` grants; `None`/`False` refuse; anything else is
+  recorded as a refusal and raises `TypeError`.
+- **Clauses accepted and ignored (F-03).** A repeated `integrity`, `for` or
+  `requires consent`, and `requires endorsed(...)` inside a declassifier, are
+  now parse errors instead of silently overwriting or doing nothing.
+- **An endorsement nobody answered for (F-04).** New errors
+  `unguarded-endorsement` and `unguarded-public-declassification`. The agent now
+  holds an `AgentSession` with no `declassify`; the evaluation and the demo use
+  it. The demo's reviewer refuses the hostile plan instead of approving
+  everything.
+- `version ²` and 5000-digit versions raised `ValueError` through the CLI and
+  language server; the CLI no longer aborts on a binary or missing file.
+
+### Dependencies
+
+An audit of the locked dependencies (`uv audit`, advisory database OSV) found 47
+advisories (24 distinct) in 44 packages. 46 of the 47 came through the `mcp` and
+`otel` extras, which nothing imported. Kelvra's core has no dependencies and was
+never exposed; what changed:
+
+- The `mcp` and `otel` extras are removed, and the lockfile shrinks from 44
+  packages to 22. An extra returns with the code that uses it.
+- `pytest` is now `>=9.0.3,<10` (GHSA-6w46-j5rx-g56g, tmpdir handling, fixed in
+  9.0.3); tests that parametrised over iterators, deprecated in pytest 9 and
+  removed in 10, now pass lists.
+- `cryptography`, used only for Ed25519 signing, is locked at 50.0.2
+  (GHSA-g6cj-pr64-35w5 concerned PKCS#7 decryption, which Kelvra does not use).
+- Re-audit: 22 packages, 0 advisories.
+- A weekly workflow (`.github/workflows/audit.yml`) and one on lockfile changes
+  repeat the audit, separate from CI so that a new advisory does not turn an
+  unrelated pull request red.
+
+### Extensions (step 6)
+
+- **A tool-call gateway** (`kelvra.gateway`, `kelvra gateway`, [spec/gateway.md](spec/gateway.md)):
+  an MCP stdio proxy that checks each `tools/call` against the conversation's label
+  before it reaches the server, labels results before they reach the client, refuses
+  unnamed tools, batches, unsolicited responses and server-initiated sampling, and
+  needs no SDK. Coarse by construction; stdio only.
+- **Interoperability, found by using the real SDK.** Running the official MCP
+  Python SDK's client and server through the gateway (1.30.0 and 2.3.0) found two
+  defects the fake-server tests could not: refusals lacked the `resultType` field
+  the 2026-07-28 revision requires, so the client saw a protocol error instead of a
+  tool error; and a server dying mid-call left the client waiting forever, the
+  gateway now answering every request in flight and exiting with the server's code.
+  Also fixed: reading the client through a buffered `stdin` could abort the
+  interpreter at shutdown. `tests/test_interop_mcp_sdk.py` keeps all of it (skipped
+  unless `mcp` is installed) and CI runs it against both SDK generations.
+- Case folding is not a list to complete. Rather than adding foldings one report at a
+  time, the gateway refuses any non-ASCII key in an object it reads by name and any
+  non-ASCII or differently-cased spelling of a method it handles, closing the class.
+  `Tools/Call` had passed as an unremarkable request, and `Sampling/CreateMessage`
+  from a server reached the client. Argument values stay unrestricted; tools with
+  non-ASCII argument names are refused. Found by an automated review; reproduced first.
+- The gateway no longer trusts exact key matching against peers that ignore case:
+  `{"Method":"tools/call"}` was no method to it and a tool call to a Go server, and
+  `name` beside `Name` let the checked tool differ from the executed one. Keys that
+  fold together (Unicode NFKC and casefold, which covers the long s and the Kelvin
+  sign) are refused, variant spellings of the members it reads are refused, and
+  only JSON-RPC's six top-level members are forwarded. Found by an automated review
+  of the commits; reproduced first.
+- The gateway refuses a message that is both a request and a response, in both
+  directions: forwarded as a request, `{"id":3,"method":"x","result":{...}}` let a
+  result reach the client unlabelled while the call stayed pending, as a lenient
+  client would read it as the answer. Found by an automated security review of the
+  commits; reproduced before it was fixed.
+- **A journal** (`Journal`, `Kelvra(journal_path=...)`, `read_journal`,
+  `journal_to_record`): events written to disk as they happen, before they count as
+  recorded; incomplete runs are reported as such; complete ones are rebuilt exactly.
+- **Ed25519 signatures** (`kelvra.signing`, extra `kelvra[sign]`): the one optional
+  dependency, imported only when used; the core still has none.
+- Step 4: `Decision.axes`, `Finding.name` and `ParseResult.warning_lines` replace
+  places that read the project's own messages back.
+
+### Security, step 3
+
+- **Labels cannot be attached by hand (F-10).** `Tainted` is issued by a session
+  and cannot be constructed; each remembers its issuer, and a session refuses a
+  value it did not issue (a hand-built one, a raw value, another session's). The
+  payload has one public name, `unsafe_value`; `.value` is gone. `PrincipalSet`
+  refuses `'*'` as a member. This stops the ordinary ways of attaching a
+  flattering label; it is not a defence against code that reaches into private
+  attributes.
+- **Signing keys are checked when the session starts (F-11).** Non-bytes keys
+  raise `TypeError`, keys under 16 bytes raise `ValueError` (also for
+  `KELVRA_SIGNING_KEY`, which used to be accepted at any length), and a record
+  produced with no key raises `UnsignedRecordWarning`.
+- **`from` is read and its use recorded (F-12).** It is parsed as an upper bound
+  (`public`, `untrusted`, `confidential(...)`, `endorsed(...)`), a typo in it is
+  an error, it is part of the fingerprint, and every `declassify` event carries
+  `from_check` (`within`, `outside`, `undeclared`). Still not enforced.
+- **A source with no `integrity` clause warns (F-13)** that it defaults to trusted.
+- `kelvra check --json` on several files prints one JSON array (one file still
+  prints the object).
+- CI runs on Linux, macOS and Windows. README, SECURITY, LIMITATIONS and the
+  threat model no longer say there is no code; the README policy is the shipped
+  example, and a test keeps it so.
+
+### Added (format 0.2, step 2)
+
+- **Provenance format 0.2.** Every event carries `seq` and the hash of the
+  previous event; `chain_head` pins the last. A deleted, inserted, duplicated,
+  reordered or truncated event now breaks the record even without a key. The
+  ledger is encapsulated and thread-safe, closes when `record()` is called, and
+  returns the same record afterwards (F-08). `Event` content is frozen.
+- **`verify_record`** checks structure, the summary against the events, the
+  chain and the signature, and never raises; `verify` is its boolean form
+  (F-07). Format 0.1 records are accepted and reported `legacy`.
+- **Refusals are recorded (F-09).** An undeclared sink is a `deny`; an undeclared
+  source or declassifier is a `refuse`. Names are truncated so the record cannot
+  carry data.
+- **`model_call(via=...)`** authorises the joined label once: one consent, one
+  `allow` or one `deny`, and nothing recorded as sent that was not.
+- **Consent carries who decided and what about (F-09).** `ConsentDecision(granted,
+  decided_by)`; a bare `True` no longer grants; `service_identities` forbids
+  self-approval; the `consent` event now holds the data's label.
+- `provenance.v0.1.schema.json` keeps the old schema; `provenance.schema.json`
+  is format 0.2.
+
+### Changed
+
+- `consent=lambda ...: True` no longer grants anywhere: tests, the demo and the
+  evaluation now use `approved_by(...)` or `ConsentDecision`.
+- `examples/support_agent/policy.klv` and `evaluation/policy.klv`: `human_review`
+  now `requires consent(reviewer)`, as the new analysis demands.
+- `tests/test_provenance_spec.py::test_fingerprint_covers_the_effective_policy`
+  edited a sealed policy in place, which is the hole closed above; it now
+  builds an unsealed copy. The assertion is unchanged.
+
 ### Added
 
 - **`spec/labels.md`** — the label algebra and flow rule, written to be

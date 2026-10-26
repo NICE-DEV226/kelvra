@@ -23,12 +23,12 @@ SAMPLE = [
 ]
 
 
-@pytest.mark.parametrize("a,b", itertools.product(SAMPLE, SAMPLE))
+@pytest.mark.parametrize("a,b", list(itertools.product(SAMPLE, SAMPLE)))
 def test_join_is_commutative(a, b):
     assert a.join(b) == b.join(a)
 
 
-@pytest.mark.parametrize("a,b,c", itertools.product(SAMPLE[:5], SAMPLE[:5], SAMPLE[:5]))
+@pytest.mark.parametrize("a,b,c", list(itertools.product(SAMPLE[:5], SAMPLE[:5], SAMPLE[:5])))
 def test_join_is_associative(a, b, c):
     assert a.join(b).join(c) == a.join(b.join(c))
 
@@ -49,7 +49,7 @@ def test_secret_absorbs(a):
     assert a.join(SECRET) == SECRET
 
 
-@pytest.mark.parametrize("a,b", itertools.product(SAMPLE, SAMPLE))
+@pytest.mark.parametrize("a,b", list(itertools.product(SAMPLE, SAMPLE)))
 def test_join_never_relaxes(a, b):
     """The result is at least as restrictive as either input, on every axis."""
     joined = a.join(b)

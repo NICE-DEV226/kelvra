@@ -1,7 +1,7 @@
 # Evaluation
 
-The first adversarial evaluation of Kelvra. Before this, the project had 491
-unit tests proving the code matched the code, and no evidence at all about
+The first adversarial evaluation of Kelvra. Before this, the project had a unit-test
+suite proving the code matched the code, and no evidence at all about
 attacks.
 
 ```bash
