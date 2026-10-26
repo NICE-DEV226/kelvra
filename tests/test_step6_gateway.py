@@ -736,3 +736,66 @@ def test_ordinary_spellings_are_untouched():
     }
     (forwarded,) = McpFilter(g).client_to_server(json.dumps(msg)).forward
     assert json.loads(forwarded) == msg
+
+
+# -- foldings nobody listed ------------------------------------------------------
+
+DOTLESS_I = chr(0x131)
+DOTTED_I = chr(0x130)
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        '{"jsonrpc":"2.0","id":1,"method":"Tools/Call","params":{"name":"exfiltrate"}}',
+        '{"jsonrpc":"2.0","id":1,"method":"TOOLS/CALL","params":{"name":"exfiltrate"}}',
+        '{"jsonrpc":"2.0","id":1,"method":"tool'
+        + chr(0x17F)
+        + '/call","params":{"name":"exfiltrate"}}',
+        '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"send_email","arguments":'
+        '{"to":"staff","' + chr(0x131) + 'x":1}}}',
+        '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search","arguments":'
+        '{"caf' + chr(0xE9) + '":1}}}',
+        '{"jsonrpc":"2.0","' + chr(0x131) + 'd":1,"method":"tools/call","params":{"name":"x"}}',
+        '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"x","argument'
+        + chr(0x17F)
+        + '":{}}}',
+        '{"jsonrpc":"2.0","id":1,"method":"Tools/List","params":{}}',  # configured in `results`
+    ],
+)
+def test_nothing_that_could_fold_to_a_name_the_gateway_reads_is_forwarded(line):
+    out = McpFilter(gateway()[0]).client_to_server(line)
+    assert out.forward == (), line
+
+
+def test_a_server_request_spelled_to_dodge_the_block_list_is_dropped():
+    f = McpFilter(gateway()[0])
+    for method in ("Sampling/CreateMessage", "SAMPLING/CREATEMESSAGE", "elicitation/Create"):
+        line = json.dumps({"jsonrpc": "2.0", "id": 9, "method": method, "params": {}})
+        assert f.server_to_client(line).forward == (), method
+    exact = json.dumps(
+        {"jsonrpc": "2.0", "id": 9, "method": "sampling/createMessage", "params": {}}
+    )
+    assert json.loads(f.server_to_client(exact).reply[0])["error"]["code"] == -32601
+
+
+def test_argument_values_are_not_restricted_only_names_are():
+    g, _ = gateway()
+    text = "caf" + chr(0xE9) + " " + DOTLESS_I + DOTTED_I
+    line = json.dumps(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "send_email", "arguments": {"to": "staff", "body": text}},
+        },
+        ensure_ascii=False,
+    )
+    (forwarded,) = McpFilter(g).client_to_server(line).forward
+    assert json.loads(forwarded)["params"]["arguments"]["body"] == text
+
+
+def test_methods_other_than_the_ones_the_gateway_reads_may_use_any_ascii_case():
+    f = McpFilter(gateway()[0])
+    line = json.dumps({"jsonrpc": "2.0", "id": 2, "method": "completion/Complete", "params": {}})
+    assert f.client_to_server(line).forward

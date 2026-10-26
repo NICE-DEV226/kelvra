@@ -96,6 +96,15 @@ Also:
   `tools/call`, is spelled other than exactly as JSON-RPC defines it. Without that,
   `Method` would be no method to the gateway and `tools/call` to a Go server. A tool
   whose legitimate arguments differ only by case is refused too; that is the price.
+* **Names the gateway reads are ASCII.** Case folding differs by decoder and locale
+  (the dotless and dotted i, the long s, the Kelvin sign, and whatever comes next), so
+  instead of chasing foldings the gateway refuses any non-ASCII key in an object it
+  reads by name (the message's own members, and the params and argument *names* of a
+  `tools/call`) and any non-ASCII method name. Argument values are unrestricted. A
+  method it handles (`tools/call`, the methods in `results`, and the server requests
+  it refuses) spelled in another case is refused too: `Tools/Call` is no tool call to
+  a gateway matching exactly and one to a server that does not. Tools whose argument
+  *names* are not ASCII cannot be used through the gateway.
 * Only the six members JSON-RPC 2.0 defines (`jsonrpc`, `id`, `method`, `params`,
   `result`, `error`) are forwarded, so a peer never sees a member the gateway did
   not look at.

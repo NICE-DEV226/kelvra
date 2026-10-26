@@ -72,6 +72,12 @@ never exposed; what changed:
   Also fixed: reading the client through a buffered `stdin` could abort the
   interpreter at shutdown. `tests/test_interop_mcp_sdk.py` keeps all of it (skipped
   unless `mcp` is installed) and CI runs it against both SDK generations.
+- Case folding is not a list to complete. Rather than adding foldings one report at a
+  time, the gateway refuses any non-ASCII key in an object it reads by name and any
+  non-ASCII or differently-cased spelling of a method it handles, closing the class.
+  `Tools/Call` had passed as an unremarkable request, and `Sampling/CreateMessage`
+  from a server reached the client. Argument values stay unrestricted; tools with
+  non-ASCII argument names are refused. Found by an automated review; reproduced first.
 - The gateway no longer trusts exact key matching against peers that ignore case:
   `{"Method":"tools/call"}` was no method to it and a tool call to a Go server, and
   `name` beside `Name` let the checked tool differ from the executed one. Keys that

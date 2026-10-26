@@ -43,7 +43,7 @@ import sys
 import threading
 import time
 import unicodedata
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -317,9 +317,39 @@ def _require_exact_members(message: dict[str, Any]) -> None:
     every variant spelling closes that without having to guess how each peer decodes.
     """
     _exact(message, _MEMBERS)
+    _ascii_only(message, "member")
+    method = message.get("method")
+    if isinstance(method, str) and not method.isascii():
+        raise ValueError("method names are ASCII")
     params = message.get("params")
     if isinstance(params, dict):
         _exact(params, _PARAMS)
+        if method == "tools/call":
+            _ascii_only(params, "parameter")
+            arguments = params.get("arguments")
+            if isinstance(arguments, dict):
+                _ascii_only(arguments, "argument name")
+
+
+def _ascii_only(obj: dict[str, Any], what: str) -> None:
+    """Refuse non-ASCII keys in an object the gateway reads by name.
+
+    Folding rules differ by decoder and by locale (the dotless and dotted i, the long
+    s, the Kelvin sign, and whatever the next one is), so a list of the foldings to
+    watch for is a list that is always one short. Case-insensitive matching can only
+    turn a non-ASCII key into one of the ASCII names the gateway reads by way of one
+    of those foldings; an ASCII-only key has no such route beyond simple case, which
+    ``_exact`` rejects. So a non-ASCII key is refused here without asking what it
+    might fold to. (Argument *values* are unrestricted.)
+    """
+    for key in obj:
+        if not key.isascii():
+            raise ValueError(f"{what} {key!r} is not ASCII")
+
+
+def _is_variant(method: str, names: Iterable[str]) -> bool:
+    """``method`` spelled differently from one of ``names`` that a lenient peer would match."""
+    return any(_fold(method) == _fold(name) and method != name for name in names)
 
 
 def _exact(obj: dict[str, Any], names: tuple[str, ...]) -> None:
@@ -449,6 +479,14 @@ class McpFilter:
 
         method = message.get("method")
         request_id = message.get("id")
+        if isinstance(method, str) and _is_variant(
+            method, ("tools/call", *self.gateway.config.results)
+        ):
+            # 'Tools/Call' is no tool call to a gateway matching exactly, and one to a
+            # server matching without regard to case.
+            return FilterOutput(
+                reply=(_error(None, _INVALID_REQUEST, "method names are case-sensitive"),)
+            )
         has_id = "id" in message and request_id is not None
         if has_id and (isinstance(request_id, bool) or not isinstance(request_id, int | str)):
             return FilterOutput(reply=(_error(None, _INVALID_REQUEST, "invalid id"),))
@@ -504,6 +542,8 @@ class McpFilter:
             return FilterOutput()  # not handed on: the client might read it differently
 
         method = message.get("method")
+        if isinstance(method, str) and _is_variant(method, _BLOCKED_FROM_SERVER):
+            return FilterOutput()  # a spelling only a lenient client would act on
         if isinstance(method, str):
             if method in _BLOCKED_FROM_SERVER:
                 if message.get("id") is None:
