@@ -58,6 +58,11 @@ pytest
 python examples/support_agent/demo.py
 ```
 
+CI installs from `uv.lock`, not from the ranges in `pyproject.toml`. After changing a
+dependency, run `uv lock` and commit the result; `uv sync --frozen --extra dev --extra lsp
+--extra sign` reproduces what CI tests. GitHub Actions are pinned to commit SHAs and
+Dependabot proposes updates; do not replace a SHA with a tag.
+
 Before opening a PR:
 
 ```bash
