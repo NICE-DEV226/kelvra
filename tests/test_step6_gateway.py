@@ -497,7 +497,7 @@ def test_the_command_needs_a_server_to_run(tmp_path):
         '{"q":"a","q":"b"}}}',
         '{"jsonrpc":"2.0","id":NaN,"method":"ping"}',
         '{"jsonrpc":"2.0","id":1,"method":"ping","params":{"x":Infinity}}',
-        "[" * 100000,
+        pytest.param("[" * 100000, id="deeply-nested-array"),
     ],
 )
 def test_a_message_the_gateway_and_the_server_could_read_differently_is_refused(line):
