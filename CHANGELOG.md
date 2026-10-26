@@ -72,6 +72,14 @@ never exposed; what changed:
   Also fixed: reading the client through a buffered `stdin` could abort the
   interpreter at shutdown. `tests/test_interop_mcp_sdk.py` keeps all of it (skipped
   unless `mcp` is installed) and CI runs it against both SDK generations.
+- A differential test replaces waiting for the next review. It feeds the gateway
+  thousands of generated, awkward lines and asks real decoders (Python, Node, Ruby,
+  PHP, Perl, jq, Go) what they see in whatever was forwarded; the answer must be what
+  the gateway checked. It found a defect on its first run: a number such as `1e999`
+  was read as infinity and forwarded as `Infinity`, which is not JSON. That is now a
+  parse error. A control with a lenient gateway shows the harness can see
+  disagreements, and reintroducing past defects makes it fail. CI requires Go, Node
+  and jq on Linux so the test cannot quietly skip.
 - Case folding is not a list to complete. Rather than adding foldings one report at a
   time, the gateway refuses any non-ASCII key in an object it reads by name and any
   non-ASCII or differently-cased spelling of a method it handles, closing the class.

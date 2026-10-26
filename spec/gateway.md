@@ -105,6 +105,9 @@ Also:
   it refuses) spelled in another case is refused too: `Tools/Call` is no tool call to
   a gateway matching exactly and one to a server that does not. Tools whose argument
   *names* are not ASCII cannot be used through the gateway.
+* **Numbers are finite.** `1e999` is valid JSON that Python reads as infinity and
+  writes back as `Infinity`, which no strict decoder accepts; a number that overflows
+  is a parse error.
 * Only the six members JSON-RPC 2.0 defines (`jsonrpc`, `id`, `method`, `params`,
   `result`, `error`) are forwarded, so a peer never sees a member the gateway did
   not look at.
@@ -141,6 +144,19 @@ The official MCP Python SDK, client and server unmodified, over the gateway:
   escapes, an emoji and U+2028 survives; resources are labelled; a server dying
   mid-call is reported; a 1.x server's sampling request is refused; the 2.x
   input-required round trip works.
+
+* **Differential testing against real JSON decoders**
+  (`tests/test_gateway_differential.py`). Thousands of generated, deliberately awkward
+  lines go through the gateway; whatever it forwards is handed to Python (three ways of
+  reading duplicate keys and case), Node, Ruby, PHP, Perl, `jq` and Go (whose
+  `encoding/json` ignores case), and each must see the method, tool name and `to`
+  argument that the gateway actually checked, and the same notion of "is this a
+  response". A decoder that refuses the line is fine; one that accepts it and reads
+  something else is a bypass. A control run, with a deliberately lenient gateway that
+  forwards the original bytes, must show disagreements from the decoders expected to
+  differ, so that "no mismatch" cannot come from a test that looks at nothing.
+  Reintroducing each past defect makes it fail (except where another defence also
+  covers it: that overlap is deliberate).
 
 Not tested: any MCP *application* (a desktop client, an IDE), any transport but
 stdio, protocol revisions other than those two, and servers that misbehave in ways

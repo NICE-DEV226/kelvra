@@ -34,6 +34,10 @@ jobs:
         # how wiring bugs survive.
         run: python -m pip install --upgrade pip && pip install -e ".[dev,lsp,sign]"
       - name: Test
+        # On Linux the differential test must really run against Go and Node (whose
+        # decoders disagree with Python's), not skip because they were not found.
+        env:
+          KELVRA_REQUIRE_PEERS: ${{ matrix.os == 'ubuntu-latest' && 'go,node,jq' || '' }}
         run: python -m pytest -q
       - name: Lint
         run: python -m ruff check src tests examples evaluation
