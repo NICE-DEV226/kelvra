@@ -88,6 +88,17 @@ Also:
   message it checked, not the original bytes, so the server reads exactly what was
   checked.
 * At most 10 000 requests may be in flight; more are refused.
+* **Case.** Some JSON decoders (Go's `encoding/json`, among others) match member
+  names without regard to case, with a wider folding than `lower()` (the long s
+  matches `s`, the Kelvin sign matches `k`). So a message is refused if any object
+  in it has two keys that fold together (`name` beside `Name`, `to` beside `To`),
+  or if a top-level member, or `name`/`arguments` inside the params of a
+  `tools/call`, is spelled other than exactly as JSON-RPC defines it. Without that,
+  `Method` would be no method to the gateway and `tools/call` to a Go server. A tool
+  whose legitimate arguments differ only by case is refused too; that is the price.
+* Only the six members JSON-RPC 2.0 defines (`jsonrpc`, `id`, `method`, `params`,
+  `result`, `error`) are forwarded, so a peer never sees a member the gateway did
+  not look at.
 * A message that is **both a request and a response** (`method` together with
   `result` or `error`, `result` together with `error`, or a `method` that is not
   text) is not forwarded in either direction. A strict peer reads it as a request

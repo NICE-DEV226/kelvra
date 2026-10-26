@@ -42,6 +42,7 @@ import subprocess
 import sys
 import threading
 import time
+import unicodedata
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -258,9 +259,25 @@ class FilterOutput:
     reply: tuple[str, ...] = ()
 
 
+def _fold(key: str) -> str:
+    """A key the way a case-insensitive JSON decoder would compare it.
+
+    Go's ``encoding/json`` and several .NET and Java decoders match member names
+    without regard to case, and Go's folding is wider than ``str.lower``: the long
+    s (U+017F) matches ``s`` and the Kelvin sign (U+212A) matches ``k``. NFKC then
+    ``casefold`` covers those.
+    """
+    return unicodedata.normalize("NFKC", key).casefold()
+
+
 def _reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    keys = [k for k, _ in pairs]
-    if len(keys) != len(set(keys)):
+    """Refuse an object with two keys a lenient decoder could take for one.
+
+    Exact duplicates were already refused; ``name`` beside ``Name`` is the same
+    attack against a decoder that ignores case, with a different winner.
+    """
+    folded = [_fold(k) for k, _ in pairs]
+    if len(folded) != len(set(folded)):
         raise ValueError("duplicate key")
     return dict(pairs)
 
@@ -277,7 +294,40 @@ def _parse(line: str) -> Any:
     about duplicate keys (first wins, last wins, error) and about ``NaN``, so both
     are refused outright rather than guessed at.
     """
-    return json.loads(line, object_pairs_hook=_reject_duplicates, parse_constant=_refuse_constant)
+    message = json.loads(
+        line, object_pairs_hook=_reject_duplicates, parse_constant=_refuse_constant
+    )
+    if isinstance(message, dict):
+        _require_exact_members(message)
+    return message
+
+
+_MEMBERS = ("jsonrpc", "id", "method", "params", "result", "error")
+"""The only top-level members JSON-RPC 2.0 defines. Nothing else is forwarded."""
+
+_PARAMS = ("name", "arguments")
+"""What the gateway reads inside the params of a ``tools/call``."""
+
+
+def _require_exact_members(message: dict[str, Any]) -> None:
+    """Refuse a spelling of a member the gateway interprets that only a lenient peer accepts.
+
+    If ``Method`` reaches a decoder that ignores case, it is the method; the gateway,
+    matching exactly, saw no method and let the message through unchecked. Rejecting
+    every variant spelling closes that without having to guess how each peer decodes.
+    """
+    _exact(message, _MEMBERS)
+    params = message.get("params")
+    if isinstance(params, dict):
+        _exact(params, _PARAMS)
+
+
+def _exact(obj: dict[str, Any], names: tuple[str, ...]) -> None:
+    wanted = {_fold(name): name for name in names}
+    for key in obj:
+        exact = wanted.get(_fold(key))
+        if exact is not None and key != exact:
+            raise ValueError(f"{key!r} is a variant spelling of {exact!r}")
 
 
 def _ambiguous(message: dict[str, Any]) -> bool:
@@ -297,6 +347,14 @@ def _ambiguous(message: dict[str, Any]) -> bool:
     if has_method and not isinstance(message["method"], str):
         return True
     return (has_method and (has_result or has_error)) or (has_result and has_error)
+
+
+def _wire(message: dict[str, Any]) -> str:
+    """What is forwarded: the members JSON-RPC defines, re-serialised, and nothing else.
+
+    A peer never sees a member the gateway did not look at.
+    """
+    return _line({name: message[name] for name in _MEMBERS if name in message})
 
 
 def _line(obj: dict[str, Any]) -> str:
@@ -408,7 +466,7 @@ class McpFilter:
                         reply=(_error(request_id, _INVALID_REQUEST, "id already in flight"),)
                     )
                 self._pending[key] = (method, None)
-        return FilterOutput(forward=(_line(message),))
+        return FilterOutput(forward=(_wire(message),))
 
     def _tools_call(self, message: dict, request_id: object, has_id: bool) -> FilterOutput:
         if not has_id:
@@ -433,7 +491,7 @@ class McpFilter:
             return FilterOutput(reply=(_tool_error(request_id, f"Kelvra: {refused}"),))
         with self._lock:
             self._pending[key] = ("tools/call", name)
-        return FilterOutput(forward=(_line(message),))
+        return FilterOutput(forward=(_wire(message),))
 
     # -- server -> client --------------------------------------------------
 
@@ -460,7 +518,7 @@ class McpFilter:
                         ),
                     )
                 )
-            return FilterOutput(forward=(_line(message),))
+            return FilterOutput(forward=(_wire(message),))
 
         if "result" not in message and "error" not in message:
             return FilterOutput()
@@ -478,7 +536,7 @@ class McpFilter:
             else self.gateway.config.results.get(method)
         )
         self.gateway.ingest(source)
-        return FilterOutput(forward=(_line(message),))
+        return FilterOutput(forward=(_wire(message),))
 
 
 class FdLineReader:

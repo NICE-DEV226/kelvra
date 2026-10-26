@@ -72,6 +72,13 @@ never exposed; what changed:
   Also fixed: reading the client through a buffered `stdin` could abort the
   interpreter at shutdown. `tests/test_interop_mcp_sdk.py` keeps all of it (skipped
   unless `mcp` is installed) and CI runs it against both SDK generations.
+- The gateway no longer trusts exact key matching against peers that ignore case:
+  `{"Method":"tools/call"}` was no method to it and a tool call to a Go server, and
+  `name` beside `Name` let the checked tool differ from the executed one. Keys that
+  fold together (Unicode NFKC and casefold, which covers the long s and the Kelvin
+  sign) are refused, variant spellings of the members it reads are refused, and
+  only JSON-RPC's six top-level members are forwarded. Found by an automated review
+  of the commits; reproduced first.
 - The gateway refuses a message that is both a request and a response, in both
   directions: forwarded as a request, `{"id":3,"method":"x","result":{...}}` let a
   result reach the client unlabelled while the call stayed pending, as a lenient

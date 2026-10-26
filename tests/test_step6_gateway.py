@@ -663,3 +663,76 @@ def test_a_plain_response_from_the_client_to_a_server_request_still_passes():
     answer = json.dumps({"jsonrpc": "2.0", "id": 9, "result": {"roots": []}})
     out = McpFilter(gateway()[0]).client_to_server(answer)
     assert [json.loads(x) for x in out.forward] == [json.loads(answer)]
+
+
+# -- decoders that ignore case ---------------------------------------------------
+
+LONG_S = chr(0x17F)  # matches 's' under the case folding Go's encoding/json uses
+KELVIN = chr(0x212A)  # matches 'k'
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        '{"jsonrpc":"2.0","id":1,"Method":"tools/call","params":{"name":"exfiltrate"}}',
+        '{"jsonrpc":"2.0","id":1,"METHOD":"tools/call","params":{"name":"exfiltrate"}}',
+        '{"jsonrpc":"2.0","id":1,"method":"tools/call","Params":{"name":"exfiltrate"}}',
+        '{"jsonrpc":"2.0","Id":1,"method":"tools/call","params":{"name":"search"}}',
+        '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search","Name":"exfiltrate"}}',
+        '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"Name":"exfiltrate"}}',
+        '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search","Arguments":{}}}',
+        '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"send","arguments":{"to":"staff","To":"external"}}}',
+        '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"send","arguments":{"to":"staff","TO":"external"}}}',
+        '{"jsonrpc":"2.0","id":1,"Result":{},"method":"x"}',
+        '{"jsonrpc":"2.0","id":1,"mEthod":"ping"}',
+    ],
+)
+def test_a_message_a_case_insensitive_decoder_would_read_differently_is_refused(line):
+    out = McpFilter(gateway()[0]).client_to_server(line)
+    assert out.forward == (), line
+    assert json.loads(out.reply[0])["error"]["code"] == -32700
+
+
+@pytest.mark.parametrize("letter,spelling", [(LONG_S, "re" + LONG_S + "ult"), (KELVIN, KELVIN)])
+def test_the_wider_unicode_case_foldings_are_covered_too(letter, spelling):
+    f = McpFilter(gateway()[0])
+    wide = json.dumps({"jsonrpc": "2.0", "id": 1, spelling: {}, "method": "x"}, ensure_ascii=True)
+    if letter == LONG_S:
+        assert f.client_to_server(wide).forward == ()
+    twin = json.dumps({"jsonrpc": "2.0", "id": 2, "method": "ping", "params": {"k": 1, KELVIN: 2}})
+    assert f.client_to_server(twin).forward == ()  # two keys that fold together
+
+
+def test_a_case_variant_response_from_the_server_is_not_handed_to_the_client():
+    g, _ = gateway(config={**CONFIG, "context_source": None})
+    f = McpFilter(g)
+    assert f.client_to_server(call(3, "read_inbox")).forward
+    for hostile in (
+        '{"jsonrpc":"2.0","id":3,"method":"notifications/x","Result":{"content":[]}}',
+        '{"jsonrpc":"2.0","id":3,"RESULT":{"content":[]}}',
+    ):
+        assert f.server_to_client(hostile).forward == ()
+    assert f.pending == 1 and "untrusted" not in g.label_description
+    f.server_to_client(result(3))
+    assert "untrusted" in g.label_description
+
+
+def test_only_the_members_json_rpc_defines_are_forwarded():
+    f = McpFilter(gateway()[0])
+    line = '{"jsonrpc":"2.0","id":4,"method":"ping","debug":{"x":1},"extra":true}'
+    (forwarded,) = f.client_to_server(line).forward
+    assert json.loads(forwarded) == {"jsonrpc": "2.0", "id": 4, "method": "ping"}
+    (back,) = f.server_to_client('{"jsonrpc":"2.0","id":4,"result":{},"leak":"x"}').forward
+    assert json.loads(back) == {"jsonrpc": "2.0", "id": 4, "result": {}}
+
+
+def test_ordinary_spellings_are_untouched():
+    g, _ = gateway()
+    msg = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {"name": "send_email", "arguments": {"to": "staff"}, "_meta": {"a": 1}},
+    }
+    (forwarded,) = McpFilter(g).client_to_server(json.dumps(msg)).forward
+    assert json.loads(forwarded) == msg
