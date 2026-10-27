@@ -25,6 +25,16 @@ an exact version.
   only in `__slots__`; they are declared, a few lists are typed, and the gateway config narrows a `None`. `py.typed` and
   `Typing :: Typed` ship, mypy is pinned (`mypy==2.4.0`) and runs in CI from the lockfile, which grows by five packages.
   A test checks that `CITATION.cff` and the editor manifest carry the package version.
+- **The unused-declassifier analysis no longer takes seconds on a large policy, and the language server no longer
+  analyses on every keystroke** (N-02). The analysis compared every source with every sink for every declassifier:
+  800 x 800 x 10 useless ones took 35 s, 400 x 400 x 10 relevant-but-useless ones 8.9 s. Sources with the same label and
+  sinks with the same signature are now compared once, a declassifier the others already cover is skipped, and one is
+  only compared with the sinks that ask for something it grants: 141 ms and 125 ms. The answers are unchanged, shown
+  against the previous algorithm kept as the reference on 24,000 random policies (and a sabotaged version fails the
+  comparison on 773 of 1,500). A policy whose every source and sink is different, with every declassifier relevant to every
+  sink, still costs the full product. The server waits 250 ms after the last edit (`KELVRA_LSP_DEBOUNCE_MS`, 0 to
+  turn it off) before analysing, drops an analysis a newer edit has made stale, and still answers opening and saving
+  at once; five quick edits give one answer.
 - **README and the editor extension's README no longer describe a project that does not exist** (N-06, N-07): the stdio
   gateway exists, the parser and a language server exist, and the grammar no longer colours `never`, an audit mode the
   parser refuses. `tests/test_docs_match_the_code.py` checks those sentences against the code.

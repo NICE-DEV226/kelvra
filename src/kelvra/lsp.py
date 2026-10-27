@@ -327,6 +327,31 @@ def completions_for(text: str, line: int, character: int) -> list[tuple[str, str
 # -- the protocol boundary --------------------------------------------------
 
 
+DEFAULT_DEBOUNCE_MS = 250
+MAX_DEBOUNCE_MS = 5000
+
+
+def debounce_seconds(environ: dict[str, str] | None = None) -> float:
+    """How long the server waits after the last edit before it analyses (seconds).
+
+    250 ms unless ``KELVRA_LSP_DEBOUNCE_MS`` says otherwise: 0 turns the wait off, anything
+    that is not a number between 0 and 5000 is ignored. Opening and saving a document are
+    never delayed. The analysis used to run on every keystroke, and on a large policy one
+    run takes long enough that typing queued up behind it.
+    """
+    env = __import__("os").environ if environ is None else environ
+    raw = env.get("KELVRA_LSP_DEBOUNCE_MS")
+    if raw is None:
+        return DEFAULT_DEBOUNCE_MS / 1000
+    try:
+        millis = float(raw)
+    except ValueError:
+        return DEFAULT_DEBOUNCE_MS / 1000
+    if not 0 <= millis <= MAX_DEBOUNCE_MS:  # also false for NaN
+        return DEFAULT_DEBOUNCE_MS / 1000
+    return millis / 1000
+
+
 def serve() -> int:
     """Run the server on stdio. Requires ``pip install kelvra[lsp]``."""
     try:
@@ -338,6 +363,8 @@ def serve() -> int:
             file=__import__("sys").stderr,
         )
         return 1
+
+    import asyncio
 
     from . import __version__
 
@@ -355,8 +382,7 @@ def serve() -> int:
         "endorse": lsp.SymbolKind.Function,
     }
 
-    def publish(uri: str) -> None:
-        text = server.workspace.get_text_document(uri).source
+    def send(uri: str, found: list[Diagnostic]) -> None:
         server.text_document_publish_diagnostics(
             lsp.PublishDiagnosticsParams(
                 uri=uri,
@@ -371,16 +397,48 @@ def serve() -> int:
                         source="kelvra",
                         message=d.full_message,
                     )
-                    for d in diagnostics_for(text, filename=uri)
+                    for d in found
                 ],
             )
         )
 
+    def publish(uri: str) -> None:
+        text = server.workspace.get_text_document(uri).source
+        send(uri, diagnostics_for(text, filename=uri))
+
+    delay = debounce_seconds()
+    generation: dict[str, int] = {}
+    pending: dict[str, asyncio.Future] = {}
+
+    def supersede(uri: str) -> int:
+        """Note that ``uri`` changed: whatever was waiting or running for it is now stale."""
+        generation[uri] = generation.get(uri, 0) + 1
+        waiting = pending.pop(uri, None)
+        if waiting is not None:
+            waiting.cancel()
+        return generation[uri]
+
+    async def publish_after_the_last_edit(uri: str, mine: int) -> None:
+        await asyncio.sleep(delay)
+        text = server.workspace.get_text_document(uri).source
+        loop = asyncio.get_running_loop()
+        found = await loop.run_in_executor(None, lambda: diagnostics_for(text, filename=uri))
+        # The analysis ran off the event loop; a newer edit may have arrived meanwhile, in which
+        # case these diagnostics describe text that is gone and must not replace newer ones.
+        if generation.get(uri) == mine:
+            send(uri, found)
+
     @server.feature(lsp.TEXT_DOCUMENT_DID_OPEN)
-    @server.feature(lsp.TEXT_DOCUMENT_DID_CHANGE)
     @server.feature(lsp.TEXT_DOCUMENT_DID_SAVE)
-    def _on_change(params) -> None:
+    def _on_open_or_save(params) -> None:
+        supersede(params.text_document.uri)
         publish(params.text_document.uri)
+
+    @server.feature(lsp.TEXT_DOCUMENT_DID_CHANGE)
+    async def _on_change(params) -> None:
+        uri = params.text_document.uri
+        mine = supersede(uri)
+        pending[uri] = asyncio.ensure_future(publish_after_the_last_edit(uri, mine))
 
     @server.feature(lsp.TEXT_DOCUMENT_HOVER)
     def _on_hover(params):
@@ -433,9 +491,11 @@ def serve() -> int:
 
 
 __all__ = [
+    "DEFAULT_DEBOUNCE_MS",
     "Diagnostic",
     "Symbol",
     "completions_for",
+    "debounce_seconds",
     "diagnostics_for",
     "hover_at",
     "serve",
