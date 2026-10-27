@@ -65,10 +65,22 @@ class Tainted(Generic[T]):
     """A value together with what it carries.
 
     Deliberately not transparent: it does not forward attribute access or
-    arithmetic to the wrapped value. The only way to get the payload back out
-    is :meth:`Kelvra.emit` or :attr:`unsafe_value`, so that losing a label is
-    something you had to type -- and ``unsafe_value`` is the *only* spelling, so
-    grepping for it finds every hole.
+    arithmetic to the wrapped value. The payload leaves the label model in
+    three ways:
+
+    * :meth:`Kelvra.emit` (and ``emit_text``), after the flow rule;
+    * :attr:`unsafe_value`, the escape hatch;
+    * **callbacks you hand to the session**: ``map(fn)``,
+      ``model_call(produce=fn)`` and ``declassify(transform=fn)`` receive the
+      raw payload, because a function that cannot see the value cannot compute
+      with it.
+
+    So grepping for ``unsafe_value`` does *not* find every place a payload can
+    leave. A callback is ordinary code, and Kelvra labels what it is given, not
+    what the code reads on the side: a function that closes over another
+    ``Tainted`` value and returns its payload produces a result labelled only
+    with what was passed in. Pass every value a callback needs as an input and
+    its label joins in; see LIMITATIONS.md ("Callbacks see plaintext").
 
     A value cannot be constructed by hand: ``Tainted(secret, PUBLIC, "x")``
     raises. Sessions issue them (``read``, ``model_call``, ``declassify``,
@@ -105,11 +117,20 @@ class Tainted(Generic[T]):
 
     @property
     def unsafe_value(self) -> T:
-        """Escape hatch. Every use is a hole in the model; grep for it."""
+        """Escape hatch. Every use is a hole in the model.
+
+        Not the only one: callbacks given to ``map``, ``model_call`` and
+        ``declassify`` also receive the payload. See the class docstring.
+        """
         return self._value
 
     def map(self, fn: Callable[[T], object], *, note: str = "map") -> Tainted:
-        """Transform the value, keeping the label. Never relaxes anything."""
+        """Transform the value, keeping the label. Never relaxes anything.
+
+        ``fn`` receives the raw payload. The result carries *this* value's label
+        and nothing else: if ``fn`` reads another ``Tainted`` value, that value's
+        label is not joined in (use ``model_call`` or ``combine`` for that).
+        """
         return Tainted._issue(fn(self._value), self.label, f"{self.origin}|{note}", self._issuer)
 
     def __repr__(self) -> str:
@@ -232,7 +253,9 @@ class Kelvra:
 
         ``produce`` receives the raw values and returns the model's output.
         If omitted, the inputs are returned as a tuple, which is useful for
-        testing propagation without spending tokens.
+        testing propagation without spending tokens. The output is labelled with
+        the join of ``inputs`` only: a value ``produce`` reads from elsewhere (a
+        closure, a global) is not tracked, so pass everything it needs as an input.
 
         ``via`` names the model provider as a declared sink. The joined label of
         the inputs is checked against it once, before the call happens: a

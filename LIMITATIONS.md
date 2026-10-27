@@ -14,6 +14,16 @@ For what Kelvra does not *defend against*, see the [threat model](spec/threat-mo
 
 **Label creep.** Any label propagation drifts: keep joining labels and eventually everything is confidential and nothing is permitted. This is the standard practical failure mode of dynamic IFC. It is now measured for one concrete form ([evaluation/README.md](evaluation/README.md#label-creep-with-a-number)): an agent that reads six documents in one model call can hand each result only to someone who may read all six, so about 98% of legitimate deliveries are refused, against none when each document gets its own call. That is the one mitigation Kelvra has, and it is a discipline for whoever writes the pipeline, not something the library does for them. The labels in that measurement are random, and how often a real pipeline can be split is not known. If you have seen this solved well in production, please open an issue.
 
+**Callbacks see plaintext, and closures are not tracked.** `map(fn)`, `model_call(produce=fn)` and
+`declassify(transform=fn)` hand the raw payload to a function, because a function that cannot see a value cannot
+compute with it. Kelvra labels the values it is *given*; it does not follow what the function reads on the side. A
+function that closes over a confidential value and returns it yields a result labelled only with the inputs, and that
+result can be emitted to a sink the confidential value could never reach (demonstrated in
+`tests/test_callbacks_known_limit.py`). The way to be safe is to pass every value a callback needs as an input, so its
+label joins in; nothing enforces that. So `unsafe_value` is **not** the only hole: until this was written down the
+docstring said it was. The same holds for code that reads a value through a global or an attribute. A static or runtime
+check for captured values would be a heuristic (defaults, globals and attributes escape it), which is why none exists.
+
 **Propagation granularity is undecided.** Per value, per message, per tool call? Each choice trades precision against overhead, and the answer should come from observing real pipelines rather than from reasoning.
 
 **Persistent memory is unaddressed.** An agent that keeps state across runs carries labels across runs too. Recent work identifies cross-session persistence as a major axis. Kelvra says nothing about it.
