@@ -15,6 +15,7 @@ host, and what a sink does with plaintext once it has it.
 
 from __future__ import annotations
 
+import base64
 import copy
 import json
 import logging
@@ -392,15 +393,22 @@ def test_non_canonical_spellings_of_the_same_bytes_are_not_tokens():
     k = make()
     text = sealed(k, "x").unsafe_value
     kind, kid, label, body = TOKEN.fullmatch(text).groups()
-    from kelvra.sealing import _b64, _unb64
-
-    assert _b64(_unb64(body)) == body
-    # re-spell the last character with a different value for its unused low bits, if any
+    pad = "=" * (-len(body) % 4)
+    seen = {"canonical": 0, "non-canonical": 0}
+    # the last character carries bits that are not data; changing them gives another spelling
     for ch in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_":
-        variant = f"kelvra-seal.v1.{kind}.{kid}.{label}.{body[:-1]}{ch}"
-        if ch != body[-1]:
-            with pytest.raises(SealError):
-                k._sealer.unseal(variant)
+        if ch == body[-1]:
+            continue
+        tail = body[:-1] + ch
+        decoded = base64.urlsafe_b64decode(tail + pad)
+        # reference rule, from the standard library alone: canonical iff re-encoding gives it back
+        canonical = base64.urlsafe_b64encode(decoded).rstrip(b"=").decode() == tail
+        seen["canonical" if canonical else "non-canonical"] += 1
+        with pytest.raises(SealError) as excinfo:
+            k._sealer.unseal(f"kelvra-seal.v1.{kind}.{kid}.{label}.{tail}")
+        expected = "sealed token failed authentication" if canonical else "malformed sealed token"
+        assert str(excinfo.value) == expected, (ch, canonical)
+    assert seen["canonical"] >= 1 and seen["non-canonical"] >= 1, seen
 
 
 # -- what the sink is asked --------------------------------------------------------------------
