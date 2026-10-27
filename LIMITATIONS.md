@@ -12,7 +12,7 @@ For what Kelvra does not *defend against*, see the [threat model](spec/threat-mo
 
 ## Unresolved design problems
 
-**Label creep.** Any label propagation drifts: keep joining labels and eventually everything is confidential and nothing is permitted. This is the standard practical failure mode of dynamic IFC, and Kelvra has no strategy for it. If you have seen this solved well in production, please open an issue.
+**Label creep.** Any label propagation drifts: keep joining labels and eventually everything is confidential and nothing is permitted. This is the standard practical failure mode of dynamic IFC. It is now measured for one concrete form ([evaluation/README.md](evaluation/README.md#label-creep-with-a-number)): an agent that reads six documents in one model call can hand each result only to someone who may read all six, so about 98% of legitimate deliveries are refused, against none when each document gets its own call. That is the one mitigation Kelvra has, and it is a discipline for whoever writes the pipeline, not something the library does for them. The labels in that measurement are random, and how often a real pipeline can be split is not known. If you have seen this solved well in production, please open an issue.
 
 **Propagation granularity is undecided.** Per value, per message, per tool call? Each choice trades precision against overhead, and the answer should come from observing real pipelines rather than from reasoning.
 

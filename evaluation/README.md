@@ -90,6 +90,110 @@ It is a limit of the approach, not a defect. A content-inspecting guard catches
 this and Kelvra does not; the two are complementary, which is the argument for
 [running both](../docs) rather than picking one.
 
+## The result is a pair, and here is the table
+
+`run.py` holds three things fixed: the policy, what the compromised agent can call, and who
+answers when a policy asks for a human. All three decide the outcome, and the README of this
+project says the honest result is "(outcome, policy)", never the outcome alone. `matrix.py`
+varies them. The attacker is as strong as it can be inside the model: given the authority it
+tries **every order of every declared crossing** before it sends. There is still no language
+model in the loop, and the policy and corpus were written by the same person.
+
+*Policy* is the shipped one, and four plausible mistakes: an endorsement nobody answers for,
+a refund sink with no consent, sources that default to trusted (the `integrity` line left
+out), and a public declassifier left open. *Agent holds* is what the compromised agent can
+call: a session (read, model call, emit), or, if the integration was careless, the whole
+authority (declassify and endorse as well). *Consent* is who answers a request for a human:
+nobody, someone who approves anything, or someone who reads what they are shown and refuses
+what the attacker produced. *Work done* counts four legitimate tasks, including the one the
+earlier evaluation never exercised: a refund after a person reviewed the ticket.
+
+<!-- matrix:start -->
+| policy | agent holds | consent | attacks through | work done | `kelvra check` |
+|---|---|---|---|---|---|
+| shipped | session | refuses | 0/6 | 3/4 | clean |
+| shipped | session | approves anything | 0/6 | 4/4 | clean |
+| shipped | session | reads what it approves | 0/6 | 4/4 | clean |
+| shipped | authority | refuses | 0/6 | 3/4 | clean |
+| shipped | authority | approves anything | 1/6 | 4/4 | clean |
+| shipped | authority | reads what it approves | 0/6 | 4/4 | clean |
+| endorser nobody answers for | session | refuses | 0/6 | 3/4 | unguarded-endorsement |
+| endorser nobody answers for | session | approves anything | 0/6 | 4/4 | unguarded-endorsement |
+| endorser nobody answers for | session | reads what it approves | 0/6 | 4/4 | unguarded-endorsement |
+| endorser nobody answers for | authority | refuses | 0/6 | 3/4 | unguarded-endorsement |
+| endorser nobody answers for | authority | approves anything | 1/6 | 4/4 | unguarded-endorsement |
+| endorser nobody answers for | authority | reads what it approves | 0/6 | 4/4 | unguarded-endorsement |
+| refund sink without consent | session | refuses | 0/6 | 3/4 | clean |
+| refund sink without consent | session | approves anything | 0/6 | 4/4 | clean |
+| refund sink without consent | session | reads what it approves | 0/6 | 4/4 | clean |
+| refund sink without consent | authority | refuses | 0/6 | 3/4 | clean |
+| refund sink without consent | authority | approves anything | 1/6 | 4/4 | clean |
+| refund sink without consent | authority | reads what it approves | 0/6 | 4/4 | clean |
+| sources default to trusted | session | refuses | 0/6 | 3/4 | 4 warnings |
+| sources default to trusted | session | approves anything | 1/6 | 4/4 | 4 warnings |
+| sources default to trusted | session | reads what it approves | 0/6 | 4/4 | 4 warnings |
+| sources default to trusted | authority | refuses | 0/6 | 3/4 | 4 warnings |
+| sources default to trusted | authority | approves anything | 1/6 | 4/4 | 4 warnings |
+| sources default to trusted | authority | reads what it approves | 0/6 | 4/4 | 4 warnings |
+| a careless public declassifier | session | refuses | 0/6 | 3/4 | unguarded-public-declassification |
+| a careless public declassifier | session | approves anything | 0/6 | 4/4 | unguarded-public-declassification |
+| a careless public declassifier | session | reads what it approves | 0/6 | 4/4 | unguarded-public-declassification |
+| a careless public declassifier | authority | refuses | 2/6 | 3/4 | unguarded-public-declassification |
+| a careless public declassifier | authority | approves anything | 3/6 | 4/4 | unguarded-public-declassification |
+| a careless public declassifier | authority | reads what it approves | 2/6 | 4/4 | unguarded-public-declassification |
+<!-- matrix:end -->
+
+What the table says, and none of it was assumed beforehand:
+
+- **With the shipped policy and a session, nothing gets through under any consent.** The
+  agent cannot relax a label, so the policy it was given is the whole story.
+- **Handing the agent the authority is the one integration mistake that matters most.** With
+  an approve-anything consent it launders its own output (endorse, then refund): one attack
+  through. Consent that actually reads is what stops it, which is why a bare `True` no longer
+  counts as consent and why a decision names who took it.
+- **`kelvra check` is conservative, and that is visible.** "An endorser nobody answers for" is an
+  error, yet the table shows it opens nothing while the refund sink still asks for consent:
+  one layer held. Take that consent away as well ("refund sink without consent") and `check`
+  stays clean, because nothing is wrong with that file taken alone; what it permits depends on
+  what else asks a person.
+- **A default can be the whole hole.** When sources default to trusted, the integrity axis, the
+  one that models prompt injection, protects nothing, and a *session* is enough: the refund
+  attack goes through on rubber-stamped consent alone. `check` says "4 warnings", not an error,
+  because the default is documented. That is the evidence for making it an error if the
+  project wants it to be one.
+- **A careless public declassifier is what it looks like.** Two attacks get through even when
+  consent refuses everything, because nobody was asked. `check` fails this policy.
+- **Safety is not free, and only one column gets both.** Refusing every request is the safest
+  consent and still costs one of four legitimate tasks, the refund. Approving everything gets
+  all four done and lets the laundering through when the agent holds the authority. Only a
+  consent that reads what it approves does both, which is a statement about people, not about
+  this library: Kelvra can ask and record who answered; it cannot make the answer careful.
+
+## Label creep, with a number
+
+`LIMITATIONS.md` says label creep is the standard practical failure of dynamic information
+flow control and that Kelvra has no strategy for it. It had no number. `creep.py` measures one
+form of it: an agent reads *k* documents, each readable by two or three of six principals, and
+must hand each result to someone that document was meant for.
+
+<!-- creep:start -->
+| documents in the session | deliveries refused: one call over all | one call per document |
+|---|---|---|
+| 1 | 0.0% | 0.0% |
+| 2 | 61.1% | 0.0% |
+| 3 | 82.4% | 0.0% |
+| 4 | 93.5% | 0.0% |
+| 5 | 97.4% | 0.0% |
+| 6 | 98.0% | 0.0% |
+<!-- creep:end -->
+
+With one model call over all the documents the output carries the join of every label
+(spec/labels.md section 7), and a delivery to one document's audience is refused unless that
+person may read all the others too. With one call per document nothing is ever refused. The
+split is the mitigation the specification names; the table is what it is worth. What it does
+not say is how often a real pipeline can be split (some tasks need the documents in one
+context), and the labels here are drawn at random, not taken from any organisation.
+
 ## Corpus
 
 Seven documents — four carrying injections, three benign — from

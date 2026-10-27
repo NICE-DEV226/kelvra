@@ -88,6 +88,24 @@ never exposed; what changed:
   change the fingerprint, and the rest is pinned (`tests/test_pinned_behaviour.py`). 189 of
   271 changes were noticed before, 260 after.
 
+### Evaluation
+
+- **`evaluation/matrix.py`: the result is a pair, so here is the table.** The same attacks
+  under the shipped policy and four plausible mistakes (an endorser nobody answers for, a
+  refund sink with no consent, sources that default to trusted, a public declassifier left
+  open), with an agent that holds a session or, through a careless integration, the whole
+  authority (where it tries every order of every declared crossing), and with consent that
+  refuses, approves anything, or reads what it approves. It shows what the earlier evaluation
+  could not: a session is enough to stop everything under the shipped policy, but the authority
+  with rubber-stamped consent launders its own output; trusting sources by default lets a
+  session through on consent alone, and `kelvra check` only warns; a clean `check` is not a safe
+  policy. It also exercises, for the first time, the legitimate use of the integrity upgrade
+  (a refund after a person reviews the ticket). The README embeds the generated table and a
+  test keeps it equal to what the code produces.
+- **`evaluation/creep.py`: label creep, with a number.** One model call over six documents
+  refuses about 98% of legitimate deliveries; one call per document refuses none. Synthetic
+  labels, one form of the problem.
+
 ### Extensions (step 6)
 
 - **A tool-call gateway** (`kelvra.gateway`, `kelvra gateway`, [spec/gateway.md](spec/gateway.md)):
