@@ -96,6 +96,18 @@ to make a missing one a failure, and `KELVRA_DIFF_CLIENT` / `KELVRA_DIFF_SERVER`
 4000 / 1500) to run it at a larger scale. It is worth running at 40000 before changing how
 the gateway reads or forwards a message.
 
+`tests/test_properties.py` states what must hold for *every* input (the label algebra, taint
+tracking over arbitrary programs, parse-render round trips, record tampering, analysis
+soundness) and lets hypothesis search for a counterexample. The default profile is fixed and
+quick; `HYPOTHESIS_PROFILE=thorough` runs a few thousand examples per property (about five
+minutes) and is the one to use before changing the label model, the parser or the record format.
+
+How strong the tests are is measured, not assumed: mutation testing (`mutmut`, run on a copy,
+not a dependency) changes the code in small ways and counts the changes the suite does not
+notice. On `labels.py` and `policy.py` it went from 189 of 271 noticed to 260 once the gaps it
+pointed at were closed; the 11 left are error-message wording and changes that cannot alter
+behaviour. If you add behaviour that something else depends on, pin it with an exact value.
+
 ### House rules
 
 **The specification is the product.** A change to enforcement behaviour that
