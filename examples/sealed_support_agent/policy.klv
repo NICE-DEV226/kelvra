@@ -1,0 +1,69 @@
+# The policy behind the sealed support agent (pipeline.py, demo.py).
+#
+# The question this policy answers: what may the model provider read? The customer's
+# message, yes: the customer wrote it to be answered. The customer's name, account number
+# and phone, no: they are labelled for the customer alone, so they can reach the model only
+# as ciphertext, through the one declassification below.
+#
+# Grammar: ../../spec/policy-language.md      Sealing: ../../src/kelvra/sealing.py
+
+policy SealedSupportAgent
+version 1
+
+principal customer, model_provider, reviewer
+
+# -- Sources ------------------------------------------------------------------------------
+
+# The message is shareable with the provider, and untrusted: anyone can write to this inbox.
+source inbox.imap
+    confidential(customer, model_provider)
+    integrity untrusted
+
+# The account details are the customer's alone. Declared, not detected: Kelvra does not look
+# for IBANs, it follows what the policy says each field is.
+source crm.name
+    confidential(customer)
+    integrity trusted
+source crm.iban
+    confidential(customer)
+    integrity trusted
+source crm.phone
+    confidential(customer)
+    integrity trusted
+
+# Public knowledge-base text: what an external recipient may legitimately receive.
+source kb.article
+    public
+    integrity trusted
+
+# -- Sinks --------------------------------------------------------------------------------
+
+# The provider is a sink like any other. It accepts only what the policy makes readable by it.
+sink llm.provider
+    accepts confidential(model_provider)
+
+sink mail.customer
+    accepts confidential(customer)
+
+sink mail.external
+    accepts public
+
+# The CRM takes only what a person has vouched for.
+sink crm.note
+    accepts confidential(customer)
+    requires endorsed(reviewer)
+
+# -- Declassification ---------------------------------------------------------------------
+
+# Sealing. What crosses is ciphertext: Kelvra encrypts the value itself (kelvra.sealing), so
+# unlike an ordinary declassifier this one is not a promise about a function the caller wrote.
+declassify seal_for_model
+    from confidential(customer)
+    to   confidential(model_provider)
+    audit always
+
+endorse human_review
+    from untrusted
+    to   endorsed(reviewer)
+    requires consent(reviewer)
+    audit always
