@@ -43,7 +43,7 @@ What exists:
 - the [provenance record](spec/provenance.md) and its [JSON schema](spec/provenance.schema.json) — the audit artifact, including its mapping onto OpenTelemetry GenAI spans,
 - the [threat model](spec/threat-model.md) — who this defends against, and explicitly who it does not,
 - the [known limitations](LIMITATIONS.md) — what is unbuilt, unverified, or unresolved,
-- a reference implementation with no third-party dependencies, whose test suite executes every worked example in the specifications,
+- a reference implementation whose core has no third-party dependencies (sealing needs the optional `seal` extra), whose test suite executes every worked example in the specifications,
 - an [adversarial evaluation](evaluation/) against a corpus of real indirect prompt injections — six attacks, five expressible as a data flow and all five contained, no false positives on three benign controls, and one attack it explicitly cannot see.
 
 What does not exist: the MCP adapter, OpenTelemetry emission, imports in `.klv`, and any deployment anyone should rely on.
@@ -228,6 +228,33 @@ Two rules from [its specification](spec/provenance.md) are worth stating here, b
 Two things make the record usable after the fact. A **journal** (`Kelvra(..., journal_path=...)`) writes each event to disk as it happens, so a crashed run still leaves evidence and a finished one can be rebuilt. And an **Ed25519 signature** (`pip install "kelvra[sign]"`, `Ed25519Signer`) lets an auditor verify with a public key alone, which HMAC cannot do.
 
 For live telemetry, the record maps onto [OpenTelemetry GenAI](https://opentelemetry.io/docs/specs/semconv/registry/attributes/gen-ai/) spans rather than inventing a transport. Those conventions are still pre-stable, which is also the opening: a label extension has a real chance upstream while they are in development.
+
+## Sealing: ciphertext for the model
+
+A pipeline that calls an external model has to put something in the prompt. For a value the policy
+keeps from the provider, Kelvra can put an authenticated ciphertext there instead. The provider (and
+anything the model is talked into doing) holds data it cannot read and a key it never had. The
+plaintext comes back only when the model's output reaches a sink, and only if the flow rule accepts
+the value's **original** label for that sink.
+
+```bash
+pip install -e ".[seal]"
+python examples/sealed_support_agent/demo.py
+```
+
+The demo shows what the provider receives (the customer's question in clear, the account details
+sealed), then an injected model trying six things, each refused and recorded, then the signed record
+verifying. It runs offline; `--model http` points it at an OpenAI-compatible endpoint with a key you
+supply.
+
+What this is: AES-256-GCM and HKDF-SHA256 from the `cryptography` package, bound to the run, the
+policy, the kind and the label so a token cannot be relabelled or moved. Nothing is invented; see
+[the cryptographic design](spec/sealing-cryptographic-design.md) and the
+[threat model](spec/sealing-threat-model.md).
+
+What it is **not**: the model cannot compute on a sealed value, only carry it. Code running in the
+same process can reach the key. There is no key rotation yet, and it has not been run against a live
+provider. [LIMITATIONS.md](LIMITATIONS.md#what-sealing-does-not-do) lists the rest.
 
 ## Prior art
 

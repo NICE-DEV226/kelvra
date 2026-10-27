@@ -26,6 +26,30 @@ For what Kelvra does not *defend against*, see the [threat model](spec/threat-mo
 
 **Format versioning is unspecified.** The provenance record carries a version field. There is no compatibility policy behind it.
 
+## What sealing does not do
+
+`Kelvra.seal` and `Kelvra.emit_text` ([design](spec/sealing-cryptographic-design.md),
+[threat model](spec/sealing-threat-model.md)) put ciphertext in front of the model. They do not:
+
+- **let the model use the value.** A model cannot reason about a ciphertext. It can copy a token into
+  its reply; it cannot read it, compare it, or compute on it. This is not homomorphic encryption.
+- **protect against code in the same process.** The `AgentSession` omits the privileged methods; it
+  is a capability boundary, not a sandbox. A test asserts that `session._kelvra` is reachable.
+- **hide everything from the provider.** It still sees the clear parts of the prompt, each token's
+  label (principal names) and kind, the plaintext length to within a 64-byte bucket, and timing.
+- **make a mangled token usable.** A model that alters a token gets an error and loses the reply;
+  nothing is repaired.
+- **rotate keys, or keep the key somewhere better than process memory.** There is no rotation, no key
+  registry, and no secret-manager or HSM integration. A key read from an environment variable is
+  visible to the user's other processes. The seal count per key is capped at 2^24 to stay far under
+  the AES-GCM random-nonce limit; across runs it is not tracked.
+- **say in the record which token was opened.** An opened token is an ordinary `allow` with the
+  joined label; there is no separate event.
+- **resist side channels,** or guarantee that a key leaves no copy in memory.
+- **replace external review.** The construction is a composition of standard primitives, tested and
+  reviewed by its author, not formally analysed or audited. It has not been run against a live
+  provider.
+
 ## Unvalidated assumptions
 
 **The adversarial evaluation is a floor, not a measurement.** There is one now

@@ -9,6 +9,29 @@ an exact version.
 
 ## [Unreleased]
 
+### Added (sealing)
+
+- **`kelvra.sealing`, `Kelvra.seal`, `Kelvra.emit_text`, `MasterKey`.** A value the policy keeps from
+  the model provider can be put in the prompt as an AES-256-GCM token (key from HKDF-SHA256, both
+  from the `cryptography` package; new optional extra `seal`). The token is authenticated together
+  with the run, the policy fingerprint, its kind and its original label. `emit_text` opens the tokens
+  in a text only after the flow rule accepts `join(text label, each original label)` for the sink,
+  and refuses anything that does not authenticate. The master key lives in the authority; an
+  `AgentSession` has no way to reach it (`emit_text` is added to the session). Design and limits:
+  `spec/sealing-*.md`.
+- **`examples/sealed_support_agent/`**: policy, pipeline, scripted honest and injected models, an
+  OpenAI-compatible adapter (tested against a local server only) and a terminal demo.
+- `spec/sealing-*.md`: threat model, properties, attack scenarios, cryptographic design and
+  verification results for sealing.
+- `examples/sealed_support_agent/ui.py`: a page on the loopback interface that runs the same pipeline
+  (Host and Origin checked, strict content security policy, model text drawn as text only).
+
+### Fixed (tests)
+
+- The Go peer of the differential test compiled a 4 MB binary into a fresh temporary directory and
+  never removed it; hundreds of runs filled the disk quota and made unrelated tests fail
+  intermittently. It is removed when the process ends.
+
 ### Fixed
 
 - **A refusal owed to the server could be lost when the client left.** After the
