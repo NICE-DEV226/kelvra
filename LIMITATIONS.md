@@ -32,7 +32,27 @@ check for captured values would be a heuristic (defaults, globals and attributes
 
 **Compiling to third-party engines is untested.** The positioning depends on being able to translate a `.klv` policy into the input of an existing engine (OPA/Rego, or a FIDES-style system). Nothing has been attempted. If this turns out to be impractical, the positioning needs rethinking.
 
-**No performance budget.** Commercial guardrails advertise sub-50ms. Nothing indicates label propagation fits in that envelope, and no measurement exists.
+**Performance has a first measurement and no budget.** `python evaluation/scale.py` reproduces the table below
+(Python 3.14.8, Linux, one laptop-class machine, 2026-10-27; yours will differ, the *shape* will not):
+
+| what | size | time |
+|---|---|---|
+| parse | 1,000 sources, 1,000 sinks, 50 declassifiers | 36 ms |
+| analyse | the same policy | 48 ms |
+| analyse | 400 x 400 x 10, useless declassifiers | 80 ms |
+| analyse | 400 x 400 x 10, every label and sink different | 1.7 s |
+| read + emit | 20,000 pairs (40,000 events) | 0.9 s |
+| record (chain and sign) / verify | 40,000 events (9 MB of JSON) | 0.26 s / 0.39 s |
+| held in memory | per event, kept until `record()` | 454 B (1,000,000 events is about 454 MB) |
+| gateway | one tool call, request and reply | 84 us |
+
+This is Kelvra's own work, with no model, network or real agent in it. Whether it fits a product's envelope is a
+question about that product; the "sub-50 ms" figure commercial guardrails advertise is not comparable and is not
+claimed. Two things to know. The unused-declassifier analysis was cubic until a measurement showed it (35 s for 800 x
+800 x 10); it is now close to linear unless every source and sink is different *and* every declassifier matters to every
+sink, which is the 1.7 s row and still grows with the product. And **a run holds all its events until `record()`
+closes it**: one `Kelvra` per task bounds that naturally; an agent that lives for millions of events would need the
+record cut into segments, which is not built.
 
 **Format versioning is unspecified.** The provenance record carries a version field. There is no compatibility policy behind it.
 

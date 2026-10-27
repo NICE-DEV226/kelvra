@@ -35,6 +35,11 @@ an exact version.
   sink, still costs the full product. The server waits 250 ms after the last edit (`KELVRA_LSP_DEBOUNCE_MS`, 0 to
   turn it off) before analysing, drops an analysis a newer edit has made stale, and still answers opening and saving
   at once; five quick edits give one answer.
+- **Performance is measured, and what a run holds is stated (N-05).** `evaluation/scale.py` reports parse, analysis,
+  labelling, record, verification and gateway cost, and the memory a run keeps: about 454 bytes per event, held until
+  `record()` (a million events is about 454 MB). `LIMITATIONS.md` said no measurement existed; it now carries the table and
+  says plainly that a long-lived agent would need the record cut into segments, which is not built. Nothing in the code
+  changed for this one: it was a claim to measure, and the answer is that ordinary runs are small.
 - **README and the editor extension's README no longer describe a project that does not exist** (N-06, N-07): the stdio
   gateway exists, the parser and a language server exist, and the grammar no longer colours `never`, an audit mode the
   parser refuses. `tests/test_docs_match_the_code.py` checks those sentences against the code.
