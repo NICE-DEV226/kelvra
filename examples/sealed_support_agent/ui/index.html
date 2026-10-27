@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sealed support agent</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <h1>Sealed support agent</h1>
+  <p class="lede">The model provider receives the customer's question, and the account details only as
+  ciphertext. Run it, then look at what the provider held and what the boundary did.</p>
+</header>
+
+<main>
+  <section class="panel" aria-labelledby="setup">
+    <h2 id="setup">1. Choose what the model does</h2>
+    <div class="choices" role="radiogroup" aria-label="Model behaviour">
+      <label class="choice"><input type="radio" name="behaviour" value="honest" checked>
+        <span><strong>Behaves</strong><small>answers the customer, copying the sealed tokens it needs</small></span></label>
+      <label class="choice"><input type="radio" name="behaviour" value="injected">
+        <span><strong>Obeys an injection</strong><small>tries to send the details to an outsider, write them to the record, forge and alter tokens</small></span></label>
+    </div>
+    <label for="message" class="field">Customer message <small>(untrusted: anyone can write to this inbox)</small></label>
+    <textarea id="message" rows="5" maxlength="2000"></textarea>
+    <div class="actions">
+      <button id="run" type="button">Run</button>
+      <button id="reset" type="button" class="quiet">Restore the example message</button>
+      <span id="status" role="status" aria-live="polite"></span>
+    </div>
+  </section>
+
+  <div id="results" hidden>
+    <section class="panel" aria-labelledby="provider">
+      <h2 id="provider">2. What the provider received</h2>
+      <p id="leakline" class="verdict"></p>
+      <pre id="prompt" tabindex="0"></pre>
+      <p class="note">Tokens are shortened here; the provider got them whole. The key id names the key and reveals nothing.</p>
+    </section>
+
+    <section class="panel" aria-labelledby="asked">
+      <h2 id="asked">3. What the model asked for, and what the boundary did</h2>
+      <ol id="attempts" class="attempts"></ol>
+    </section>
+
+    <section class="panel" aria-labelledby="auditor">
+      <h2 id="auditor">4. What the auditor receives</h2>
+      <p id="verdict" class="verdict"></p>
+      <dl id="summary" class="summary"></dl>
+      <pre id="report" tabindex="0"></pre>
+    </section>
+  </div>
+
+  <section class="panel limits" aria-labelledby="limits">
+    <h2 id="limits">What this does not do</h2>
+    <p>The model cannot read a sealed value, so it cannot reason about it; it can copy it. Code running in
+    this process can reach the key: the boundary is for the model and the provider, not for the
+    application. There is no key rotation, and this page has not been run against a live provider.</p>
+  </section>
+</main>
+<script src="/app.js"></script>
+</body>
+</html>
