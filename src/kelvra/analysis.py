@@ -225,7 +225,7 @@ def _injection_surface(policy: Policy) -> list[Finding]:
     is dangerous -- posting to a log is not writing to a bank -- so this is a
     warning that names the exposure rather than an error.
     """
-    findings = []
+    findings: list[Finding] = []
     untrusted = {
         name: source
         for name, source in policy.sources.items()
@@ -276,7 +276,7 @@ def _trapped_sources(policy: Policy) -> list[Finding]:
     Either the source is dead weight, or a declassifier is missing. Both are
     worth knowing; neither is definitely a bug, so it is a warning.
     """
-    findings = []
+    findings: list[Finding] = []
     if not policy.sinks:
         return findings
 
@@ -307,7 +307,7 @@ def _unused_declassifiers(policy: Policy) -> list[Finding]:
     one is pure attack surface. Removing it costs nothing and shrinks what an
     auditor has to reason about.
     """
-    findings = []
+    findings: list[Finding] = []
     if not policy.sources or not policy.sinks:
         return findings
 

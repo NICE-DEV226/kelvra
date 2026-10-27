@@ -114,12 +114,15 @@ class GatewayConfig:
                     f"tool {tool!r}: sink {sink!r} is not declared in the policy"
                 )
             tools[tool] = ToolSpec(sink, declared_source(spec["source"], f"tool {tool!r}"))
-        results = {
+        resolved = {
             method: declared_source(source, f"results[{method!r}]")
             for method, source in (data.get("results") or {}).items()
         }
-        if any(source is None for source in results.values()):
-            raise GatewayConfigError("results must name a declared source for each method")
+        results: dict[str, str] = {}
+        for method, source in resolved.items():
+            if source is None:
+                raise GatewayConfigError("results must name a declared source for each method")
+            results[method] = source
         return GatewayConfig(
             tools, results, declared_source(data.get("context_source"), "context_source")
         )

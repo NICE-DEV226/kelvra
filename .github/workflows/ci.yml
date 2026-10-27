@@ -47,6 +47,8 @@ jobs:
         run: uv run --frozen --no-sync python -m pytest -q
       - name: Lint
         run: uv run --frozen --no-sync python -m ruff check src tests examples evaluation
+      - name: Type check
+        run: uv run --frozen --no-sync python -m mypy
 
   test-unlocked:
     # The locked job above proves the code works with the versions that were audited. This

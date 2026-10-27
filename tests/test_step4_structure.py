@@ -73,6 +73,25 @@ def test_the_package_version_is_the_one_pyproject_declares():
     assert declared and declared.group(1) == __version__
 
 
+def test_every_file_that_names_the_version_names_the_same_one():
+    """CITATION.cff and the editor manifest carried 0.1.0 by hand, with nothing to check them."""
+    import json
+
+    citation = re.search(
+        r'^version:\s*"([^"]+)"', (ROOT / "CITATION.cff").read_text(encoding="utf-8"), re.M
+    )
+    package_json = ROOT / "editors" / "vscode" / "package.json"
+    manifest = json.loads(package_json.read_text(encoding="utf-8"))
+    assert citation and citation.group(1) == __version__
+    assert manifest["version"] == __version__
+
+
+def test_the_package_says_it_is_typed_and_ships_the_marker():
+    marker = ROOT / "src" / "kelvra" / "py.typed"
+    assert marker.exists() and marker.read_text(encoding="utf-8") == ""
+    assert '"Typing :: Typed"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+
+
 def test_the_record_declares_the_format_not_the_package():
     record = Kelvra(parse("policy P\nprincipal a\n")).record()
     assert record["kelvra_version"] == FORMAT_VERSION

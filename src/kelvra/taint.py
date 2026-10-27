@@ -92,6 +92,12 @@ class Tainted(Generic[T]):
 
     __slots__ = ("_issuer", "_value", "label", "origin")
 
+    # Declared so a type checker knows the slots; annotations alone create no class attributes.
+    _issuer: object
+    _value: T
+    label: Label
+    origin: str
+
     def __init__(
         self, value: T, label: Label, origin: str, *, _mint: object = None, _issuer: object = None
     ) -> None:
