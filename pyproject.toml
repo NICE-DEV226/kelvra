@@ -47,7 +47,9 @@ sign = ["cryptography>=43"]
 # anything, because its default rule set moved underneath the build. Bump it
 # deliberately, in its own commit, with the findings it produces.
 # pytest 9.0.3 is the first release without GHSA-6w46-j5rx-g56g (tmpdir handling).
-dev = ["pytest>=9.0.3,<10", "ruff==0.16.0", "jsonschema>=4.20"]
+# hypothesis generates the inputs the properties in tests/test_properties.py are checked
+# against, and shrinks a failure to the smallest one that still fails.
+dev = ["pytest>=9.0.3,<10", "ruff==0.16.0", "jsonschema>=4.20", "hypothesis>=6.100"]
 
 [project.scripts]
 kelvra = "kelvra.cli:main"

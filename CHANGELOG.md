@@ -69,6 +69,25 @@ never exposed; what changed:
   versions. A separate, non-blocking job still installs the unlocked ranges, to see an
   upstream release that breaks the project before a user does.
 
+### Tests
+
+- **Properties, not only examples** (`tests/test_properties.py`, 21 of them, via
+  `hypothesis`, now a dev dependency): the label algebra and the flow rule against an
+  independent oracle; taint tracking over arbitrary programs of reads, model calls and maps (a
+  derived value is exactly the join of its sources, and joining never lets a flow through
+  that either side alone would be refused); a policy written as text and parsed back is the
+  policy written, however it is indented, commented or terminated; no text makes the parser
+  or the language server raise anything but a located error; every single change to a record
+  is detected without a key; the analysis says "unreachable" exactly when no execution
+  reaches the sink.
+- **Mutation testing found 72 changes to `labels.py` and `policy.py` that the suite did not
+  notice**, and 10 that no test reached. They were: the exact text of a refusal, the
+  `Decision`'s sink and label, `Policy.__delattr__` (untested), how labels and sets display,
+  and above all that nothing pinned the **fingerprint of a policy** across releases. Now the
+  fingerprints of the shipped policies are known values, every field of a policy is shown to
+  change the fingerprint, and the rest is pinned (`tests/test_pinned_behaviour.py`). 189 of
+  271 changes were noticed before, 260 after.
+
 ### Evaluation
 
 - **`evaluation/matrix.py`: the result is a pair, so here is the table.** The same attacks
