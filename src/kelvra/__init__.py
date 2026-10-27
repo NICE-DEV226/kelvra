@@ -36,6 +36,7 @@ from .provenance import (
     verify,
     verify_record,
 )
+from .sealing import MasterKey, SealError
 from .taint import (
     AgentSession,
     ConsentDecision,
@@ -67,9 +68,11 @@ __all__ = [
     "Label",
     "Ledger",
     "LedgerClosed",
+    "MasterKey",
     "Policy",
     "PolicyIntegrityError",
     "PrincipalSet",
+    "SealError",
     "Sink",
     "Source",
     "Tainted",

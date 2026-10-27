@@ -480,12 +480,16 @@ dev = [
 lsp = [
     { name = "pygls" },
 ]
+seal = [
+    { name = "cryptography" },
+]
 sign = [
     { name = "cryptography" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "cryptography", marker = "extra == 'seal'", specifier = ">=43" },
     { name = "cryptography", marker = "extra == 'sign'", specifier = ">=43" },
     { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.100" },
     { name = "jsonschema", marker = "extra == 'dev'", specifier = ">=4.20" },
@@ -493,7 +497,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.3,<10" },
     { name = "ruff", marker = "extra == 'dev'", specifier = "==0.16.0" },
 ]
-provides-extras = ["lsp", "sign", "dev"]
+provides-extras = ["lsp", "sign", "seal", "dev"]
 
 [[package]]
 name = "lsprotocol"

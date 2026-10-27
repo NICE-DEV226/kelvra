@@ -36,6 +36,7 @@ from .policy import Declassifier, Policy, Sink, check_flow
 from .provenance import Journal, Ledger, UnsignedRecordWarning, check_key, key_from_env
 
 if TYPE_CHECKING:
+    from .sealing import MasterKey, Sealer
     from .signing import Signer
 
 T = TypeVar("T")
@@ -166,6 +167,7 @@ class Kelvra:
         signer: Signer | None = None,
         journal_path: str | os.PathLike[str] | None = None,
         durable_journal: bool = False,
+        master_key: MasterKey | None = None,
     ) -> None:
         """``service_identities`` names the accounts that run the agent itself.
 
@@ -178,6 +180,10 @@ class Kelvra:
         ``journal_path`` also writes every event to that file as it happens
         (see :class:`~kelvra.provenance.Journal`): the file must not exist yet,
         and a run that cannot be journalled does not start.
+
+        ``master_key`` enables :meth:`seal` and :meth:`emit_text` (see
+        :mod:`kelvra.sealing`). It stays here, in the authority: an
+        :class:`AgentSession` has no way to reach it.
         """
         # Sealed, not referenced. A run whose policy changed underneath it
         # cannot be honestly attested to, and the signature would make the
@@ -203,6 +209,11 @@ class Kelvra:
                 Journal(journal_path, durable=durable_journal) if journal_path is not None else None
             ),
         )
+        self._sealer: Sealer | None = None
+        if master_key is not None:
+            from .sealing import Sealer
+
+            self._sealer = Sealer(master_key, self.ledger.policy_fingerprint, self.ledger.run_id)
 
     # -- entry -----------------------------------------------------------
 
@@ -273,7 +284,15 @@ class Kelvra:
 
         Kelvra does not and cannot check that ``transform`` actually does
         what its name claims. It records that this crossing was taken.
+        (:meth:`seal` is the one declassification whose transformation Kelvra
+        performs itself, and so the one whose effect it can vouch for.)
         """
+        after = self._cross(name, tainted)
+        value = transform(tainted._value) if transform is not None else tainted._value
+        return Tainted._issue(value, after, f"{tainted.origin}|{name}", self._issuer)
+
+    def _cross(self, name: str, tainted: Tainted) -> Label:
+        """Look up, consent to and record one declassification; return the new label."""
         self.ledger.ensure_open()
         self._own(tainted)
         try:
@@ -291,8 +310,63 @@ class Kelvra:
         self.ledger.declassify(
             name, tainted.label, after, d.requires_consent_from, d.matches_from(tainted.label)
         )
-        value = transform(tainted._value) if transform is not None else tainted._value
-        return Tainted._issue(value, after, f"{tainted.origin}|{name}", self._issuer)
+        return after
+
+    # -- sealing ---------------------------------------------------------
+
+    def seal(self, name: str, tainted: Tainted[str], kind: str = "value") -> Tainted[str]:
+        """Replace a value by an authenticated ciphertext, under a declared declassification.
+
+        ``name`` must be a declassifier of the policy; the crossing it describes is exactly
+        what happens: the *token* carries the relaxed label (for example one that lets the
+        model provider read it), because the token is all that crosses. The plaintext and
+        its original label stay recoverable only through :meth:`emit_text`, which asks the
+        flow rule about the original label, not the relaxed one.
+
+        Unlike :meth:`declassify`, the transformation is Kelvra's, not the caller's, so the
+        policy's claim ("this crossing sends ciphertext") is one Kelvra can keep.
+        """
+        if self._sealer is None:
+            raise TypeError("sealing needs Kelvra(..., master_key=MasterKey(...))")
+        self.ledger.ensure_open()
+        self._own(tainted)
+        if not isinstance(tainted._value, str):
+            raise TypeError(f"only text can be sealed, not {type(tainted._value).__name__}")
+        # Seal first, record second: a value that cannot be sealed (too long, bad kind)
+        # must not leave a declassification in the record that never produced a token.
+        token = self._sealer.seal(tainted._value, kind, tainted.label)
+        after = self._cross(name, tainted)
+        return Tainted._issue(token, after, f"{tainted.origin}|{name}", self._issuer)
+
+    def emit_text(self, sink_name: str, tainted: Tainted[str]) -> str:
+        """Send text to a sink, opening the sealed tokens in it if, and only if, allowed.
+
+        The decision is one flow: the text's own label joined with the *original* label of
+        every token inside it. If the sink refuses that, nothing is opened and the refusal is
+        recorded like any other. A token that does not authenticate (forged, altered, cut,
+        from another run) is refused and recorded, never passed through.
+        """
+        self.ledger.ensure_open()
+        self._own(tainted)
+        if not isinstance(tainted._value, str):
+            raise TypeError(f"emit_text takes text, not {type(tainted._value).__name__}")
+        if self._sealer is None:
+            return self.emit(sink_name, tainted)
+
+        from .sealing import SealError
+
+        def decide(originals: list[Label]) -> None:
+            self._authorize(sink_name, join_all([tainted.label, *originals]))
+
+        try:
+            text, _ = self._sealer.resolve(tainted._value, decide)
+        except SealError as error:
+            if sink_name in self.policy.sinks:
+                self.ledger.deny(sink_name, tainted.label, (f"sealed content refused: {error}",))
+            else:
+                self.ledger.deny(sink_name, tainted.label, ("sink is not declared in the policy",))
+            raise
+        return text
 
     # -- exit ------------------------------------------------------------
 
@@ -489,6 +563,9 @@ class AgentSession:
 
     def emit(self, sink_name: str, tainted: Tainted[T]) -> T:
         return self._kelvra.emit(sink_name, tainted)
+
+    def emit_text(self, sink_name: str, tainted: Tainted[str]) -> str:
+        return self._kelvra.emit_text(sink_name, tainted)
 
     def would_allow(self, sink_name: str, tainted: Tainted) -> bool:
         return self._kelvra.would_allow(sink_name, tainted)

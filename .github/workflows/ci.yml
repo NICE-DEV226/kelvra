@@ -36,7 +36,7 @@ jobs:
         # quietly, which is how wiring bugs survive. uv is pinned like everything else.
         run: >
           python -m pip install "uv==0.12.5" &&
-          uv sync --frozen --extra dev --extra lsp --extra sign --python ${{ matrix.python-version }}
+          uv sync --frozen --extra dev --extra lsp --extra sign --extra seal --python ${{ matrix.python-version }}
       - name: What was installed
         run: uv pip list
       - name: Test
@@ -60,7 +60,7 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.13"
-      - run: python -m pip install --upgrade pip && pip install -e ".[dev,lsp,sign]"
+      - run: python -m pip install --upgrade pip && pip install -e ".[dev,lsp,sign,seal]"
       - run: python -m pytest -q
 
   interop:
