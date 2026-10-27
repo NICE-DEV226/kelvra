@@ -9,6 +9,26 @@ an exact version.
 
 ## [Unreleased]
 
+### Resolved after the feature-by-feature analysis
+
+- **Callbacks see plaintext, and closures are not tracked (N-01).** `Tainted`'s docstring said `unsafe_value` was the
+  only way a payload leaves the label model and that grepping for it finds every hole. `map(fn)`,
+  `model_call(produce=fn)` and `declassify(transform=fn)` also hand the raw payload to a function, and a function that
+  closes over another value yields a result labelled only with its inputs: a public value emitted a secret to a public
+  sink. The docstrings and LIMITATIONS now say so and tests pin it (`tests/test_callbacks_known_limit.py`). Nothing in
+  the code changed; the claim did.
+- **Changed (breaking, pre-1.0): `kelvra check --json` always prints one array** with one entry per file in the order
+  given, and a file that cannot be read or parsed gets an entry with `error` (`kind`, `line`, `message`, `hint`) instead of
+  nothing. It used to print an object for one file, an array for several, and no JSON at all for a file that failed.
+  Entries for good files gain `"error": null`. Exit codes and the text on stderr are unchanged (N-03).
+- **The package is type-checked** (N-04). mypy found 26 errors, nearly all because `Tainted` declared its attributes
+  only in `__slots__`; they are declared, a few lists are typed, and the gateway config narrows a `None`. `py.typed` and
+  `Typing :: Typed` ship, mypy is pinned (`mypy==2.4.0`) and runs in CI from the lockfile, which grows by five packages.
+  A test checks that `CITATION.cff` and the editor manifest carry the package version.
+- **README and the editor extension's README no longer describe a project that does not exist** (N-06, N-07): the stdio
+  gateway exists, the parser and a language server exist, and the grammar no longer colours `never`, an audit mode the
+  parser refuses. `tests/test_docs_match_the_code.py` checks those sentences against the code.
+
 ### Fixed
 
 - **A refusal owed to the server could be lost when the client left.** After the

@@ -59,12 +59,29 @@ def cmd_check(args: argparse.Namespace) -> int:
         except KlvError as error:
             print(str(error), file=sys.stderr)
             worst = EXIT_FINDINGS
+            reports.append(
+                {
+                    "file": str(path),
+                    "error": {
+                        "kind": "parse",
+                        "line": error.line,
+                        "message": error.message,
+                        "hint": error.hint,
+                    },
+                }
+            )
             continue
         except (OSError, UnicodeDecodeError) as error:
             # UnicodeDecodeError is a ValueError, not an OSError: a binary or
             # mis-encoded file must not abort the files that follow it.
             print(f"cannot read {path}: {error}", file=sys.stderr)
             worst = EXIT_FINDINGS
+            reports.append(
+                {
+                    "file": str(path),
+                    "error": {"kind": "read", "line": None, "message": str(error), "hint": ""},
+                }
+            )
             continue
 
         findings = analyse(policy)
@@ -73,6 +90,7 @@ def cmd_check(args: argparse.Namespace) -> int:
             reports.append(
                 {
                     "file": str(path),
+                    "error": None,
                     "policy": policy.name,
                     "version": policy.version,
                     "fingerprint": policy.fingerprint(),
@@ -104,10 +122,12 @@ def cmd_check(args: argparse.Namespace) -> int:
         if args.strict and (findings or warnings):
             worst = EXIT_FINDINGS
 
-    if args.json and reports:
-        # One file: the object itself, as before. Several: one array, so the
-        # output is a single JSON document a pipeline can parse.
-        print(json.dumps(reports[0] if len(reports) == 1 else reports, indent=2))
+    if args.json:
+        # Always one array, one entry per file in the order given, including the files
+        # that could not be read or parsed (their entry has "error"). It used to be an
+        # object for one file, an array for several, and nothing at all for a file that
+        # failed, which a pipeline cannot tell from a crash.
+        print(json.dumps(reports, indent=2))
     return worst
 
 

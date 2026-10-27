@@ -127,13 +127,52 @@ def test_a_broken_file_does_not_stop_the_others_being_checked(write, capsys):
 
 def test_json_output_is_machine_readable(write, capsys):
     run("check", "--json", str(write(DEAD_SINK)))
-    payload = json.loads(capsys.readouterr().out)
+    [payload] = json.loads(capsys.readouterr().out)
 
-    assert payload["policy"] == "Dead"
+    assert payload["policy"] == "Dead" and payload["error"] is None
     assert payload["fingerprint"].startswith("sha256:")
     codes = {f["code"] for f in payload["findings"]}
     assert "unsatisfiable-sink" in codes
     assert all(set(f) >= {"code", "severity", "subject", "message"} for f in payload["findings"])
+
+
+def test_json_is_always_one_array_with_one_entry_per_file_in_order(write, capsys):
+    broken = write("policy P\nbogus\n", "broken.klv")
+    good = write(CLEAN, "good.klv")
+    missing = broken.parent / "missing.klv"
+    code = run("check", "--json", str(broken), str(good), str(missing))
+    entries = json.loads(capsys.readouterr().out)
+    assert code == EXIT_FINDINGS
+    assert [e["file"] for e in entries] == [str(broken), str(good), str(missing)]
+    assert entries[0]["error"] == {
+        "kind": "parse",
+        "line": 2,
+        "message": "unknown keyword 'bogus' at top level",
+        "hint": "expected version, principal, purpose, or one of: "
+        "source, sink, declassify, endorse",
+    }
+    assert entries[1]["error"] is None and entries[1]["policy"] == "Clean"
+    assert entries[2]["error"]["kind"] == "read" and entries[2]["error"]["line"] is None
+    assert "policy" not in entries[0] and "findings" not in entries[2]
+
+
+def test_json_for_one_unreadable_file_is_still_json_and_the_text_still_goes_to_stderr(
+    write, capsys
+):
+    bad = write("policy P\nbogus\n", "bad.klv")
+    assert run("check", "--json", str(bad)) == EXIT_FINDINGS
+    captured = capsys.readouterr()
+    [entry] = json.loads(captured.out)
+    assert entry["error"]["kind"] == "parse"
+    assert "unknown keyword 'bogus'" in captured.err  # the human message is unchanged
+
+
+def test_json_for_a_binary_file_names_the_encoding_problem(write, capsys):
+    binary = write("", "bin.klv")
+    binary.write_bytes(b"\xff\xfe\x00 not utf-8 \xe5")
+    assert run("check", "--json", str(binary)) == EXIT_FINDINGS
+    [entry] = json.loads(capsys.readouterr().out)
+    assert entry["error"]["kind"] == "read" and "codec" in entry["error"]["message"]
 
 
 # -- explain ----------------------------------------------------------------
