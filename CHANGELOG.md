@@ -9,6 +9,16 @@ an exact version.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A refusal owed to the server could be lost when the client left.** After the
+  client disconnected the gateway closed the server's input as soon as nothing
+  was pending, which on a slow scheduler (seen on Windows, Python 3.14) was
+  before it had read and refused a request the server had just made. It now
+  also waits for the server to fall quiet (`quiet_seconds`, 0.25 s, still bounded
+  by `drain_seconds`). Nothing was ever forwarded wrongly; the refusal was only
+  not delivered. A server that speaks late is in the test suite now.
+
 ### Tests (mutation gaps in `provenance.py`)
 
 - `spec/provenance.vector.json` is a complete record signed with a published
