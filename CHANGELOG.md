@@ -9,6 +9,33 @@ an exact version.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A refusal owed to the server could be lost when the client left.** After the
+  client disconnected the gateway closed the server's input as soon as nothing
+  was pending, which on a slow scheduler (seen on Windows, Python 3.14) was
+  before it had read and refused a request the server had just made. It now
+  also waits for the server to fall quiet (`quiet_seconds`, 0.25 s, still bounded
+  by `drain_seconds`). Nothing was ever forwarded wrongly; the refusal was only
+  not delivered. A server that speaks late is in the test suite now.
+
+### Tests (mutation gaps in `provenance.py`)
+
+- `spec/provenance.vector.json` is a complete record signed with a published
+  test key, built with a fixed clock and run id. A second implementation of the
+  verifier can check itself against it, and a test fails if the code stops
+  producing it byte for byte.
+- `tests/test_provenance_details.py` pins what mutation testing found unasserted:
+  the exact reason `verify_record` gives for each way a record is wrong, the
+  hash chain and the signature recomputed with `hashlib` alone, the text of the
+  one-page report, each way a journal file can be wrong, and how the journal
+  writes (private file mode, partial writes, flushing, failure messages).
+- `tests/test_taint_details.py` does the same for `taint.py`: the transform of a
+  declassification is applied, the consent provider is told whom it is asked and
+  for what, origins and sites reach the ledger, `signer` with `signing_key` is
+  refused, the unsigned-record warning points at the caller, and the identity
+  length limits are exact.
+
 ### Security
 
 Findings of the independent audit (`kelvra-audit/`), first hardening step.

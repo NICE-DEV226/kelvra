@@ -638,6 +638,7 @@ def run_stdio(
     client_out: Any,
     *,
     drain_seconds: float = 5.0,
+    quiet_seconds: float = 0.25,
 ) -> int:
     """Run ``command`` as an MCP server with ``flt`` between it and the client.
 
@@ -664,7 +665,12 @@ def run_stdio(
     out_lock = threading.Lock()
     in_lock = threading.Lock()
     wake = threading.Event()
-    state = {"client_done": False, "server_done": False}
+    state: dict[str, Any] = {
+        "client_done": False,
+        "server_done": False,
+        "server_busy": False,
+        "server_last": time.monotonic(),
+    }
 
     def to_client(text: str) -> None:
         with out_lock:
@@ -686,17 +692,22 @@ def run_stdio(
 
     def pump_server() -> None:
         for raw in iter(process.stdout.readline, b""):  # type: ignore[union-attr]
+            state["server_busy"] = True
             try:
-                text = raw.decode("utf-8").rstrip("\r\n")
-            except UnicodeDecodeError:
-                continue
-            if not text:
-                continue
-            result = flt.server_to_client(text)
-            for line in result.forward:
-                to_client(line)
-            for line in result.reply:
-                to_server(line)
+                try:
+                    text = raw.decode("utf-8").rstrip("\r\n")
+                except UnicodeDecodeError:
+                    continue
+                if not text:
+                    continue
+                result = flt.server_to_client(text)
+                for line in result.forward:
+                    to_client(line)
+                for line in result.reply:
+                    to_server(line)
+            finally:
+                state["server_last"] = time.monotonic()
+                state["server_busy"] = False
         state["server_done"] = True
         wake.set()
 
@@ -746,7 +757,10 @@ def run_stdio(
     # way, and a server whose input closes may stop before sending them (or before
     # reading the refusals we owe it). Give it a moment to finish.
     deadline = time.monotonic() + drain_seconds
-    while flt.pending and not state["server_done"] and time.monotonic() < deadline:
+    while not state["server_done"] and time.monotonic() < deadline:
+        idle = time.monotonic() - state["server_last"]
+        if not flt.pending and not state["server_busy"] and idle >= quiet_seconds:
+            break
         time.sleep(0.01)
     try:
         process.stdin.close()

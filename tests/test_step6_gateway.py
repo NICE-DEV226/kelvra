@@ -340,7 +340,7 @@ def test_garbage_from_the_server_is_not_handed_to_the_client():
 # -- end to end, with a real process on the other side -------------------------
 
 
-def run_gateway(tmp_path, lines, *, extra=()):
+def run_gateway(tmp_path, lines, *, extra=(), server_env=None):
     policy = tmp_path / "policy.klv"
     policy.write_text(POLICY, encoding="utf-8")
     config = tmp_path / "tools.json"
@@ -350,6 +350,7 @@ def run_gateway(tmp_path, lines, *, extra=()):
         os.environ, PYTHONPATH=str(ROOT / "src"), FAKE_MCP_LOG=str(log), PYTHONDONTWRITEBYTECODE="1"
     )
     env.pop("KELVRA_SIGNING_KEY", None)
+    env.update(server_env or {})
     proc = subprocess.run(
         [
             sys.executable,
@@ -412,6 +413,20 @@ def test_end_to_end_the_servers_own_requests_and_fabricated_answers_are_stopped(
     _, replies, sent = run_gateway(tmp_path, [call(1, "read_inbox")])
     assert not [r for r in replies if r.get("method") == "sampling/createMessage"]
     assert not [r for r in replies if r.get("id") == 777]  # the answer to no question
+    assert any(s.get("other", {}).get("error", {}).get("code") == -32601 for s in sent)
+
+
+def test_end_to_end_a_request_the_server_makes_after_the_client_left_is_still_refused(tmp_path):
+    """The server answers, then speaks 150 ms later. The client has already disconnected.
+
+    The gateway used to close the server's input as soon as nothing was pending, which on a
+    slow scheduler (found on Windows) was before it had read and refused the server's own
+    request. The refusal is owed to the server whether or not the client is still there.
+    """
+    _, replies, sent = run_gateway(
+        tmp_path, [call(1, "read_inbox")], server_env={"FAKE_MCP_LATE_MS": "150"}
+    )
+    assert not [r for r in replies if r.get("method") == "sampling/createMessage"]
     assert any(s.get("other", {}).get("error", {}).get("code") == -32601 for s in sent)
 
 

@@ -10,6 +10,7 @@ refused call never reached it.
 import json
 import os
 import sys
+import time
 
 
 def send(obj):
@@ -83,6 +84,9 @@ for line in sys.stdin:
                     },
                 }
             )
+            # A server that talks a moment after it answered: a client that has just
+            # disconnected must still get its refusal delivered.
+            time.sleep(int(os.environ.get("FAKE_MCP_LATE_MS", "0")) / 1000)
             send(
                 {
                     "jsonrpc": "2.0",
