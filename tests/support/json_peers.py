@@ -17,6 +17,7 @@ survive. Everything here uses only the standard library of each runtime.
 
 from __future__ import annotations
 
+import atexit
 import json
 import os
 import shutil
@@ -350,6 +351,9 @@ def _go_peer() -> Peer:
     def build() -> str:
         if "bin" not in cache:
             directory = tempfile.mkdtemp(prefix="kelvra-go-peer-")
+            # The compiled peer is 4 MB. Left behind, every test run costs 4 MB of the
+            # temporary directory; hundreds of runs filled it. Remove it when the process ends.
+            atexit.register(shutil.rmtree, directory, ignore_errors=True)
             source = Path(directory) / "peer.go"
             source.write_text(_GO, encoding="utf-8")
             binary = str(Path(directory) / ("peer.exe" if os.name == "nt" else "peer"))
