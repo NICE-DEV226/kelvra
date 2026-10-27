@@ -56,6 +56,19 @@ never exposed; what changed:
   repeat the audit, separate from CI so that a new advisory does not turn an
   unrelated pull request red.
 
+### Supply chain of the repository itself
+
+- **Every GitHub Action is pinned to a full commit SHA**, with its release in a comment
+  (`actions/checkout` v7.0.1, `actions/setup-python` v7.1.0). A tag can be moved after
+  the fact; a SHA cannot. Pinning means nothing updates by itself, so
+  `.github/dependabot.yml` opens a weekly pull request per outdated action for a person
+  to read and merge; delete it to turn that off.
+- **CI installs from `uv.lock`** (`uv sync --frozen`, uv itself pinned) and prints what it
+  installed. Until now it installed whatever pip resolved from the ranges in
+  `pyproject.toml`, so the dependency audit and the tests could be about different
+  versions. A separate, non-blocking job still installs the unlocked ranges, to see an
+  upstream release that breaks the project before a user does.
+
 ### Evaluation
 
 - **`evaluation/matrix.py`: the result is a pair, so here is the table.** The same attacks

@@ -1,0 +1,12 @@
+# Actions are pinned to a commit SHA, because a tag can be moved and a pinned SHA cannot.
+# The price of pinning is that nothing updates by itself; this is what does, with a pull
+# request per action that a person reads and merges. Delete this file to turn that off, and
+# the pins then stay where they are until someone moves them.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci"
