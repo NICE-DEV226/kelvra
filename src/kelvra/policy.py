@@ -101,9 +101,7 @@ def check_flow(label: Label, sink: Sink) -> Decision:
         axes.append("endorsement")
 
     if sink.purpose is not None and sink.purpose not in label.purposes:
-        reasons.append(
-            f"sink serves purpose {sink.purpose!r}, not permitted by {label.purposes!r}"
-        )
+        reasons.append(f"sink serves purpose {sink.purpose!r}, not permitted by {label.purposes!r}")
         axes.append("purpose")
 
     return Decision(
@@ -271,9 +269,7 @@ class Policy:
         payload = {
             "name": self.name,
             "version": self.version,
-            "sources": {
-                n: s.label.to_json() for n, s in sorted(self.sources.items())
-            },
+            "sources": {n: s.label.to_json() for n, s in sorted(self.sources.items())},
             "sinks": {
                 n: {
                     "audience": s.audience.to_json(),

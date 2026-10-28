@@ -1,7 +1,7 @@
 {
   "name": "kelvra-klv",
   "displayName": "Kelvra policy (.klv)",
-  "description": "Syntax highlighting for Kelvra policy files. Highlighting only -- there is no parser, so nothing here validates a policy.",
+  "description": "Syntax highlighting, snippets and editing rules for Kelvra policy files (.klv). Highlighting only: nothing here validates a policy. Run `kelvra check`, or connect `kelvra lsp` as a language server, for that.",
   "version": "0.1.0",
   "publisher": "kelvra",
   "license": "MIT OR Apache-2.0",
@@ -10,15 +10,31 @@
     "url": "https://github.com/NICE-DEV226/kelvra.git",
     "directory": "editors/vscode"
   },
-  "engines": { "vscode": "^1.75.0" },
-  "categories": ["Programming Languages"],
+  "engines": {
+    "vscode": "^1.82.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets",
+    "Linters"
+  ],
   "contributes": {
     "languages": [
       {
         "id": "klv",
-        "aliases": ["Kelvra policy", "klv"],
-        "extensions": [".klv"],
-        "configuration": "./language-configuration.json"
+        "aliases": [
+          "Kelvra policy",
+          "klv",
+          "kelvra"
+        ],
+        "extensions": [
+          ".klv"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/klv-light.svg",
+          "dark": "./images/klv-dark.svg"
+        }
       }
     ],
     "grammars": [
@@ -27,6 +43,70 @@
         "scopeName": "source.klv",
         "path": "./syntaxes/klv.tmLanguage.json"
       }
-    ]
+    ],
+    "snippets": [
+      {
+        "language": "klv",
+        "path": "./snippets/klv.code-snippets"
+      }
+    ],
+    "commands": [
+      {
+        "command": "kelvra.restartServer",
+        "title": "Kelvra: Restart the language server"
+      },
+      {
+        "command": "kelvra.showServerLog",
+        "title": "Kelvra: Show the language server log"
+      }
+    ],
+    "configuration": {
+      "title": "Kelvra",
+      "properties": {
+        "kelvra.server.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Start the Kelvra language server for .klv files (diagnostics, hover, suggestions, rename). Colouring works without it."
+        },
+        "kelvra.server.command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "How to start the server, as a command and its arguments, for example `[\"/path/to/kelvra\"]` or `[\"python3\", \"-m\", \"kelvra.cli\"]`. `lsp` is added. Empty: look in `~/.local/share/kelvra/venv`, then on the PATH, then use `python3 -m kelvra.cli`."
+        },
+        "kelvra.diagnostics.delayMs": {
+          "type": "number",
+          "default": 250,
+          "minimum": 0,
+          "maximum": 5000,
+          "description": "How long to wait after the last edit before checking the policy, in milliseconds. 0 checks on every keystroke."
+        }
+      }
+    }
+  },
+  "keywords": [
+    "kelvra",
+    "klv",
+    "policy",
+    "information-flow",
+    "ai-agents",
+    "security"
+  ],
+  "main": "./extension.js",
+  "icon": "images/icon.png",
+  "galleryBanner": {
+    "color": "#0A1E37",
+    "theme": "dark"
+  },
+  "activationEvents": [
+    "onLanguage:klv"
+  ],
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "scripts": {
+    "check": "node --check extension.js"
   }
 }

@@ -39,3 +39,7 @@ htmlcov/
 Thumbs.db
 CLAUDE.md
 .hypothesis/
+
+# VS Code extension: installed dependencies and built packages are not committed.
+node_modules/
+*.vsix

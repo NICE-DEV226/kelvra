@@ -281,8 +281,11 @@ class Ledger:
                 self.ended_at = _now()
                 if self.journal is not None:
                     self.journal.end(
-                        {"ended_at": self.ended_at, "chain_head": self._head,
-                         "events": len(self._events)}
+                        {
+                            "ended_at": self.ended_at,
+                            "chain_head": self._head,
+                            "events": len(self._events),
+                        }
                     )
 
     def to_record(self, key: bytes | None = None, signer: Signer | None = None) -> dict:
@@ -355,9 +358,7 @@ def _genesis(run_id: str, fingerprint: str, started_at: str) -> str:
 
 
 def _summarise(events: list[Event]) -> dict[str, int]:
-    return {
-        name: sum(1 for e in events if e.kind == kind) for name, kind in _SUMMARY_V02.items()
-    }
+    return {name: sum(1 for e in events if e.kind == kind) for name, kind in _SUMMARY_V02.items()}
 
 
 # -- the journal ------------------------------------------------------------

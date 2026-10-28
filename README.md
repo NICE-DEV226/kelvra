@@ -43,10 +43,11 @@ What exists:
 - the [provenance record](spec/provenance.md) and its [JSON schema](spec/provenance.schema.json) — the audit artifact, including its mapping onto OpenTelemetry GenAI spans,
 - the [threat model](spec/threat-model.md) — who this defends against, and explicitly who it does not,
 - the [known limitations](LIMITATIONS.md) — what is unbuilt, unverified, or unresolved,
-- a reference implementation with no third-party dependencies, whose test suite executes every worked example in the specifications,
+- a reference implementation whose core has no third-party dependencies (the language server, signing with Ed25519 and sealing each need an optional extra), whose test suite executes every worked example in the specifications,
+- a [gateway](spec/gateway.md) for MCP over stdio (`kelvra gateway`), tested against the official SDK's client and server and against real JSON decoders, and a signed, hash-chained provenance record with a write-ahead journal,
 - an [adversarial evaluation](evaluation/) against a corpus of real indirect prompt injections — six attacks, five expressible as a data flow and all five contained, no false positives on three benign controls, and one attack it explicitly cannot see.
 
-What does not exist: the MCP adapter, OpenTelemetry emission, imports in `.klv`, and any deployment anyone should rely on.
+What does not exist: OpenTelemetry emission, imports in `.klv`, an HTTP transport for the gateway, a trial of the gateway with a real MCP application, and any deployment anyone should rely on.
 
 There is nothing to `pip install` from an index. If you want to argue with the design before it hardens, now is when that is worth most.
 
@@ -90,6 +91,13 @@ The precedent is TypeScript, which never executes anything — `tsc` erases ever
 
 This parses and runs. It is [the actual policy](examples/support_agent/policy.klv) the demo enforces — not an illustration kept in step by hand. The syntax is **not final**.
 
+<p align="center">
+  <img src="./assets/policy.svg" alt="The SupportAgent policy, with syntax colouring: sources, sinks and declassifiers" />
+</p>
+
+<details>
+<summary>The same policy as text, to copy</summary>
+
 ```kelvra
 policy SupportAgent
 version 1
@@ -132,6 +140,8 @@ declassify share_with_model
     to   confidential(model_provider)
     audit always
 ```
+
+</details>
 
 About fifty lines. An auditor can read them and establish: three constrained exits; three crossings, each named — two that widen a reader set and one that grants an endorsement; and who must consent to the endorsement and to the CRM write. The agent's Python is untouched.
 
@@ -274,7 +284,7 @@ Threat model, label vocabulary, provenance format.
 Instrument an existing agent *without enforcing anything*. Label sources, propagate, emit the provenance record. This is immediately useful to a compliance team, and it produces the real flow data needed to design the language against observed behavior rather than imagined syntax.
 
 **Phase 2 — Declaration** *(current: parser, analysis, language server and reference runtime exist)*
-What remains is enforcement at the MCP boundary. The language server came before it deliberately: for most languages an LSP is a convenience, but here the diagnostics *are* the security tool — telling someone in their editor that a flow can never be permitted delivers the whole value proposition at authoring time, before anything runs.
+The MCP boundary now exists as a stdio gateway; what remains is trying it with a real MCP application, an HTTP transport, and the open design problems in [LIMITATIONS.md](LIMITATIONS.md). The language server came before it deliberately: for most languages an LSP is a convenience, but here the diagnostics *are* the security tool — telling someone in their editor that a flow can never be permitted delivers the whole value proposition at authoring time, before anything runs.
 
 **Phase 3 — Standardization**
 Publish the vocabulary and record format as an implementation-independent specification, and seek a home for it. This is the phase that decides whether the project matters.

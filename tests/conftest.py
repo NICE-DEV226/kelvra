@@ -10,8 +10,7 @@ so a pending entry cannot outlive its defect.
 
 import pytest
 
-PENDING = {
-}
+PENDING = {}
 
 
 MAX_TEST_ID = 1000
@@ -34,6 +33,4 @@ def pytest_collection_modifyitems(config, items):
             continue
         for tid, why in PENDING.items():
             if item.name.startswith(f"test_{tid}_"):
-                item.add_marker(
-                    pytest.mark.xfail(strict=True, reason=f"audit {why}", run=True)
-                )
+                item.add_marker(pytest.mark.xfail(strict=True, reason=f"audit {why}", run=True))
