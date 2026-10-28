@@ -72,6 +72,24 @@ async function run() {
   } finally { button.disabled = false; }
 }
 
+function drawPolicy(policy) {
+  const box = $("policy");
+  box.replaceChildren();
+  $("policy-name").textContent = policy.name;
+  for (const line of policy.lines) {
+    const row = el("div", "line");
+    if (!line.length || line.every(([, text]) => text === "")) row.append(document.createTextNode("\u00a0"));
+    for (const [name, text] of line) {
+      if (text === "") continue;
+      row.append(name ? el("span", "tok-" + name, text) : document.createTextNode(text));
+    }
+    box.append(row);
+  }
+}
+fetch("/api/policy").then((r) => r.json()).then(drawPolicy).catch(() => {
+  $("policy").textContent = "The policy could not be loaded.";
+});
+
 let DEFAULTS = { honest: "", injected: "" };
 function restore() { messageBox.value = DEFAULTS[behaviour()]; }
 document.querySelectorAll('input[name="behaviour"]').forEach((r) => r.addEventListener("change", restore));

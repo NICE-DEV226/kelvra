@@ -26,8 +26,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "editors"))
+
+import highlight
 from models import HonestModel, HttpChatModel, InjectedModel
-from pipeline import INJECTED, LEGIT, Case, Pipeline
+from pipeline import INJECTED, LEGIT, POLICY_FILE, Case, Pipeline
 
 ASSETS = Path(__file__).with_name("ui")
 MAX_BODY = 8 * 1024
@@ -48,6 +51,18 @@ STATIC = {
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/style.css": ("style.css", "text/css; charset=utf-8"),
 }
+
+
+def policy_payload() -> dict:
+    """The policy the pipeline enforces, coloured by the editor's own grammar (highlight.py).
+
+    Sent as (class, text) pieces per line so the page can draw it as text, never as markup.
+    """
+    text = POLICY_FILE.read_text(encoding="utf-8")
+    return {
+        "name": POLICY_FILE.name,
+        "lines": [[[name, piece] for name, piece in line] for line in highlight.classes(text)],
+    }
 
 
 def default_message(behaviour: str) -> str:
@@ -113,6 +128,8 @@ def make_handler(model_factory):
         def do_GET(self):
             if not self._host_ok():
                 return self._json(403, {"error": "unexpected Host header"})
+            if self.path == "/api/policy":
+                return self._json(200, policy_payload())
             if self.path == "/api/defaults":
                 return self._json(
                     200,

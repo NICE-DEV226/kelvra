@@ -58,5 +58,20 @@ pre { background: var(--code); border: 1px solid var(--line); border-radius: 8px
 .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr)); gap: 8px; margin: 0 0 8px; }
 .summary div { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
 .summary dt { color: var(--muted); font-size: .8rem; } .summary dd { margin: 0; font-weight: 700; font-size: 1.2rem; }
+.policy { background: #0d1117; color: #e6edf3; border: 1px solid #30363d; border-radius: 8px;
+  padding: 12px; overflow-x: auto; max-height: 26rem; overflow-y: auto; margin-top: 8px;
+  font: 0.82rem/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.policy .line { white-space: pre; min-height: 1.55em; }
+.tok-comment { color: #8b949e; font-style: italic; }
+.tok-keyword { color: #ff7b72; font-weight: bold; }
+.tok-name { color: #d2a8ff; }
+.tok-directive { color: #79c0ff; }
+.tok-function { color: #ffa657; }
+.tok-principal { color: #7ee787; }
+.tok-purpose { color: #e3b341; }
+.tok-constant { color: #56d4dd; }
+.tok-number { color: #79c0ff; }
+.tok-punctuation { color: #8b949e; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; }
 @media (prefers-reduced-motion: no-preference) { .attempts li { animation: in .2s ease-out; } }
 @keyframes in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }

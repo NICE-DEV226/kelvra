@@ -10,6 +10,7 @@ from __future__ import annotations
 import http.client
 import importlib.util
 import json
+import re
 import sys
 import threading
 from pathlib import Path
@@ -35,6 +36,7 @@ def load_ui():
 
 
 ui = load_ui()
+pipeline = sys.modules["pipeline"]  # the module ui.py imported: the policy it serves
 
 
 @pytest.fixture
@@ -234,3 +236,55 @@ def test_the_server_will_not_listen_on_anything_but_loopback():
 def test_the_server_banner_does_not_name_the_python_version(server):
     _, headers, _ = call(server, "GET", "/")
     assert headers["Server"].strip() == "SealedDemo" and "Python" not in headers["Server"]
+
+
+# -- the policy panel ------------------------------------------------------------------------
+
+
+def test_the_page_shows_the_policy_the_pipeline_enforces_split_into_coloured_pieces(server):
+    status, headers, body = call(server, "GET", "/api/policy")
+    payload = json.loads(body)
+    assert status == 200 and headers["Content-Type"].startswith("application/json")
+    assert payload["name"] == "policy.klv"
+    shown = ["".join(text for _, text in line) for line in payload["lines"]]
+    assert shown == pipeline.POLICY_FILE.read_text(encoding="utf-8").split("\n")
+    classes = {name for line in payload["lines"] for name, _ in line}
+    assert {
+        "keyword",
+        "name",
+        "directive",
+        "function",
+        "principal",
+        "constant",
+        "comment",
+    } <= classes
+
+
+def test_every_word_of_the_policy_on_the_page_has_a_colour(server):
+    payload = json.loads(call(server, "GET", "/api/policy")[2])
+    uncoloured = [
+        text.strip()
+        for line in payload["lines"]
+        for name, text in line
+        if not name and re.search(r"[A-Za-z0-9_]", text)
+    ]
+    assert uncoloured == []
+
+
+def test_the_page_colours_each_class_with_the_colour_the_readme_picture_uses(server):
+    sys.path.insert(0, str(ROOT / "editors"))
+    import highlight
+
+    css = (EXAMPLE / "ui" / "style.css").read_text(encoding="utf-8")
+    for _, name in highlight.CLASSES:
+        found = re.search(rf"\.tok-{name}\s*\{{([^}}]*)\}}", css)
+        assert found, f"the page has no colour for {name}"
+        assert highlight.PALETTE[name] in found.group(1), name
+    assert ".policy" in css and highlight.PALETTE["background"] in css
+    html = call(server, "GET", "/")[2].decode()
+    assert 'id="policy"' in html and "The policy that decides" in html
+
+
+def test_the_policy_is_not_served_to_a_foreign_host_name(server):
+    assert call(server, "GET", "/api/policy", host="evil.example")[0] == 403
+    assert call(server, "POST", "/api/policy", {})[0] == 404
