@@ -258,7 +258,14 @@ def keyfile(tmp_path, text, mode=0o600):
     return path
 
 
-NAMES = ("GEMINI_API_KEY", "XAI_API_KEY", "GROK_API_KEY", "GOOGLE_API_KEY", "OPENAI_API_KEY")
+NAMES = (
+    "GEMINI_API_KEY",
+    "GROQ_API_KEY",
+    "XAI_API_KEY",
+    "GROK_API_KEY",
+    "GOOGLE_API_KEY",
+    "OPENAI_API_KEY",
+)
 
 
 @pytest.fixture
@@ -343,32 +350,42 @@ def test_the_live_tool_reads_a_key_file_and_refuses_one_inside_the_repository(
     tmp_path, clean_env, capsys
 ):
     inside = ROOT / "tests" / "_keys_must_not_be_here.env"
-    inside.write_text("XAI_API_KEY=secret\n", encoding="utf-8")
+    inside.write_text("GROQ_API_KEY=secret\n", encoding="utf-8")
     os.chmod(inside, 0o600)
     try:
-        assert live.main(["--env-file", str(inside), "--list-models", "grok"]) == 2
+        assert live.main(["--env-file", str(inside), "--list-models", "groq"]) == 2
         assert "inside the repository" in capsys.readouterr().err
     finally:
         inside.unlink()
-    outside = keyfile(tmp_path, "XAI_API_KEY=secret-value\n")
-    live.main(["--env-file", str(outside), "--list-models", "grok"])  # fails to connect or auth
+    outside = keyfile(tmp_path, "GROQ_API_KEY=secret-value\n")
+    live.main(["--env-file", str(outside), "--list-models", "groq"])  # fails to connect or auth
     shown = capsys.readouterr()
     assert "secret-value" not in shown.out + shown.err
-    assert "XAI_API_KEY" in shown.out  # the name is shown, never the value
+    assert "GROQ_API_KEY" in shown.out  # the name is shown, never the value
 
 
 def test_presets_name_the_documented_endpoints_and_prefer_the_variable_that_is_set(
     clean_env, monkeypatch
 ):
-    assert providers.PRESETS["grok"].base_url == "https://api.x.ai/v1"
+    assert providers.PRESETS["groq"].base_url == "https://api.groq.com/openai/v1"
+    assert providers.PRESETS["groq"].key_envs == ("GROQ_API_KEY",)
+    assert providers.PRESETS["xai"].base_url == "https://api.x.ai/v1"
     assert providers.PRESETS["gemini"].base_url.startswith(
         "https://generativelanguage.googleapis.com/"
     )
-    assert providers.PRESETS["grok"].key_env() == "XAI_API_KEY"  # none set: the first name
+    assert "grok" not in providers.PRESETS  # Groq and Grok are different companies
+    assert providers.PRESETS["xai"].key_env() == "XAI_API_KEY"  # none set: the first name
     monkeypatch.setenv("GROK_API_KEY", "x")
-    assert providers.PRESETS["grok"].key_env() == "GROK_API_KEY"
+    assert providers.PRESETS["xai"].key_env() == "GROK_API_KEY"
     monkeypatch.setenv("XAI_API_KEY", "y")
-    assert providers.PRESETS["grok"].key_env() == "XAI_API_KEY"
+    assert providers.PRESETS["xai"].key_env() == "XAI_API_KEY"
+    assert providers.PRESETS["groq"].key_env() == "GROQ_API_KEY"
+
+
+def test_the_groq_key_variable_may_be_read_from_a_key_file(tmp_path, clean_env):
+    path = keyfile(tmp_path, "GROQ_API_KEY=gsk-fake-value\n")
+    assert providers.load_env_file(path) == ["GROQ_API_KEY"]
+    assert os.environ["GROQ_API_KEY"] == "gsk-fake-value"
 
 
 # -- reading what a real model answers

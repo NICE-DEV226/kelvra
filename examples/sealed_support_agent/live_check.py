@@ -1,7 +1,7 @@
 """Run the sealed pipeline against real models and measure what happens. Nothing is assumed.
 
     python live_check.py --list-models gemini
-    python live_check.py --target gemini:<model> --target grok:<model> --trials 20 --out
+    python live_check.py --target gemini:<model> --target groq:<model> --trials 20 --out
     results.json
 
 What it answers, for each model and scenario:

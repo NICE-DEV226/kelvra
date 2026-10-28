@@ -8,7 +8,7 @@ an error message. The ways a key can arrive:
   passed as ``--env-file``. Only the variable names listed in ``ALLOWED_NAMES`` are read from it, so
   a file cannot be used to set ``PYTHONPATH`` or ``LD_PRELOAD``.
 
-Presets name an endpoint that speaks the OpenAI chat-completions protocol. That Gemini and xAI
+Presets name an endpoint that speaks the OpenAI chat-completions protocol. That Gemini, Groq and xAI
 expose one is their documented compatibility layer; whether a given model name is current is for
 ``--list-models`` to say, not this file.
 """
@@ -23,7 +23,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ALLOWED_NAMES = frozenset(
-    {"GEMINI_API_KEY", "GOOGLE_API_KEY", "XAI_API_KEY", "GROK_API_KEY", "OPENAI_API_KEY"}
+    {
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "GROQ_API_KEY",
+        "XAI_API_KEY",
+        "GROK_API_KEY",
+        "OPENAI_API_KEY",
+    }
 )
 
 
@@ -45,7 +52,9 @@ PRESETS: dict[str, Preset] = {
         "https://generativelanguage.googleapis.com/v1beta/openai",
         ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
     ),
-    "grok": Preset("https://api.x.ai/v1", ("XAI_API_KEY", "GROK_API_KEY")),
+    # Groq (groq.com), the inference provider. Not Grok, xAI's model, which is "xai" below.
+    "groq": Preset("https://api.groq.com/openai/v1", ("GROQ_API_KEY",)),
+    "xai": Preset("https://api.x.ai/v1", ("XAI_API_KEY", "GROK_API_KEY")),
     "openai": Preset("https://api.openai.com/v1", ("OPENAI_API_KEY",)),
 }
 
