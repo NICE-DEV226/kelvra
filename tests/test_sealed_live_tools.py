@@ -54,6 +54,7 @@ class Chat(BaseHTTPRequestHandler):
     statuses: ClassVar[list[int]] = []
     seen_auth: ClassVar[list[str | None]] = []
     seen_agents: ClassVar[list[str | None]] = []
+    error_message: ClassVar[str | None] = None
     models: ClassVar[object] = None
 
     def log_message(self, *args):
@@ -80,7 +81,8 @@ class Chat(BaseHTTPRequestHandler):
         if cls.statuses:
             status = cls.statuses.pop(0)
             if status != 200:
-                return self._send(status, {"error": {"message": f"echo {SECRET_KEY}"}})
+                message = cls.error_message or f"echo {SECRET_KEY}"
+                return self._send(status, {"error": {"message": message}})
         prompt = body["messages"][1]["content"]
         tokens = live.tokens_in(prompt)
         text = f"{tokens['name']} {tokens['iban']} {tokens['phone']}"
@@ -105,7 +107,14 @@ def server(monkeypatch):
     handler = type(
         "H",
         (Chat,),
-        {"statuses": [], "seen_auth": [], "seen_agents": [], "mode": "copy", "models": None},
+        {
+            "statuses": [],
+            "seen_auth": [],
+            "seen_agents": [],
+            "error_message": None,
+            "mode": "copy",
+            "models": None,
+        },
     )
     srv = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -537,3 +546,73 @@ def test_the_task_asks_the_model_to_confirm_the_details_so_that_tokens_are_neede
     models = load("models")
     system = json.loads(models.HttpChatModel().request_body("p"))["messages"][0]["content"]
     assert "confirm the name, IBAN and phone number" in system and "three tokens" in system
+
+
+@pytest.mark.parametrize(
+    "message,seconds",
+    [
+        ("Rate limit reached. Please try again in 7.5s.", 7.5),
+        ("please try again in 250ms", 0.25),
+        ("Please try again in 1m3.2s", 63.2),
+        ("Please try again in 2m0s", 120.0),
+        ("Try again in 12 s", 12.0),
+        ("Limit reached, slow down", None),
+        ("", None),
+        ("try again later", None),
+    ],
+)
+def test_the_wait_a_provider_asks_for_is_read_from_its_message(message, seconds):
+    assert live.wait_from_message(message) == seconds
+
+
+def test_a_rate_limit_that_names_its_delay_is_waited_out_for_exactly_that_long(
+    server, capsys, tmp_path, monkeypatch
+):
+    waits = []
+    monkeypatch.setattr(live.time, "sleep", waits.append)
+    server.statuses[:] = [429, 200]
+    server.error_message = "Rate limit reached. Please try again in 7.5s."
+    run("--trials", "1", "--scenario", "honest", "--out", str(tmp_path / "r.json"))
+    assert 8.0 in waits  # 7.5 s and half a second of margin
+    server.statuses[:] = [429, 200]
+    server.error_message = "Please try again in 4000s"
+    waits.clear()
+    run("--trials", "1", "--scenario", "honest", "--out", str(tmp_path / "r.json"))
+    assert max(waits) == 90.0  # never longer than a minute and a half
+
+
+def test_an_exhausted_quota_stops_that_model_at_once_and_says_so(server, capsys, tmp_path):
+    server.statuses[:] = [429] * 50
+    server.error_message = "You exceeded your current quota, please check your plan and billing."
+    out = tmp_path / "r.json"
+    run("--trials", "20", "--scenario", "honest", "--out", str(out))
+    shown = capsys.readouterr().out
+    document = json.loads(out.read_text(encoding="utf-8"))
+    [raw] = document["raw"]
+    assert len(raw["trials"]) == 1 and raw["trials"][0]["outcome"] == "quota_exhausted"
+    assert "its quota is used up" in shown and "(stopped)" in shown
+    [summary] = document["summaries"]
+    assert summary["stopped"] is True and summary["valid"] == 0
+    assert len(server.statuses) == 49  # one request, not a retry loop
+
+
+def test_repeated_failures_stop_a_model_after_the_limit_not_after_all_its_trials(
+    server, capsys, tmp_path
+):
+    server.statuses[:] = [500] * 500
+    out = tmp_path / "r.json"
+    run("--trials", "20", "--scenario", "honest", "--max-failures", "3", "--out", str(out))
+    [raw] = json.loads(out.read_text(encoding="utf-8"))["raw"]
+    assert len(raw["trials"]) == 3
+    assert "3 calls in a row failed" in capsys.readouterr().out
+
+
+def test_a_success_resets_the_count_of_failures_in_a_row(server, capsys, tmp_path):
+    # Each trial may use four requests (the first and three retries): the first four 500s fail
+    # trial 1, the 200 succeeds trial 2, and so on. Two failures never come in a row.
+    server.statuses[:] = [500] * 4 + [200] + [500] * 4 + [200]
+    out = tmp_path / "r.json"
+    run("--trials", "4", "--scenario", "honest", "--max-failures", "2", "--out", str(out))
+    [raw] = json.loads(out.read_text(encoding="utf-8"))["raw"]
+    assert [t["outcome"] for t in raw["trials"]] == ["api_error", "ok", "api_error", "ok"]
+    assert "stopping" not in capsys.readouterr().out

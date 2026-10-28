@@ -84,8 +84,26 @@ def pct(successes: int, total: int) -> str:
     return f"{rate} ({successes}/{total}, 95% CI {100 * low:.0f}-{100 * high:.0f}%)"
 
 
+class QuotaExhausted(RuntimeError):
+    """The key's allowance is used up. Waiting a few seconds will not help, so nothing retries."""
+
+
+def wait_from_message(message: str) -> float | None:
+    """How long the provider says to wait ("Please try again in 7.5s", "in 250ms", "in 1m3s")."""
+    found = re.search(r"try again in (?:(\d+)m)?\s*([0-9.]+)\s*(ms|s)", message, re.IGNORECASE)
+    if not found:
+        return None
+    minutes, number, unit = found.groups()
+    seconds = float(number) / (1000 if unit.lower() == "ms" else 1)
+    return seconds + 60 * int(minutes or 0)
+
+
 class Retrying:
-    """Wraps a model: retry a rate limit or a server error a few times, then give up."""
+    """Wraps a model: retry a rate limit or a server error a few times, then give up.
+
+    A rate limit that names its own delay is waited out (up to a minute and a half); a quota that
+    is exhausted is not retried at all, because a pause cannot fix it.
+    """
 
     def __init__(self, model: HttpChatModel, delay: float) -> None:
         self.model, self.delay = model, delay
@@ -97,10 +115,16 @@ class Retrying:
                 time.sleep(self.delay)
                 return reply
             except RuntimeError as error:
-                transient = any(f"HTTP {c}" in str(error) for c in (408, 429, 500, 502, 503, 504))
+                message = str(error)
+                if "HTTP 429" in message and re.search(
+                    r"exceeded your current quota", message, re.I
+                ):
+                    raise QuotaExhausted(message) from None
+                transient = any(f"HTTP {c}" in message for c in (408, 429, 500, 502, 503, 504))
                 if not transient or attempt == RETRIES:
                     raise
-                time.sleep(2.0 * 2**attempt)
+                named = wait_from_message(message)
+                time.sleep(min(90.0, named + 0.5) if named is not None else 2.0 * 2**attempt)
         raise AssertionError("unreachable")
 
 
@@ -111,6 +135,8 @@ def one_trial(
     values = {"name": case.name, "iban": case.iban, "phone": case.phone}
     try:
         result = Pipeline(model, master_key=MasterKey.generate()).run(case)
+    except QuotaExhausted as error:
+        return {"outcome": "quota_exhausted", "error": str(error)}
     except RuntimeError as error:
         return {"outcome": "api_error", "error": str(error)}
     sent = tokens_in(result.prompt)
@@ -148,7 +174,7 @@ def one_trial(
 
 
 def summarise(target: str, scenario: str, trials: list[dict]) -> dict:
-    valid = [t for t in trials if t["outcome"] != "api_error"]
+    valid = [t for t in trials if t["outcome"] not in ("api_error", "quota_exhausted")]
     n = len(valid)
     sent = sum(t["tokens_sent"] for t in valid)
     copied = sum(t["tokens_copied_exactly"] for t in valid)
@@ -158,6 +184,7 @@ def summarise(target: str, scenario: str, trials: list[dict]) -> dict:
         "scenario": scenario,
         "trials": len(trials),
         "api_errors": len(trials) - n,
+        "stopped": any(t["outcome"] == "quota_exhausted" for t in trials),
         "token_copy": pct(copied, copied + altered),  # of the tokens the model tried to copy
         "tokens_used": pct(copied + altered, sent),
         "reply_complete": pct(sum(t["outcome"] == "ok" for t in valid), n),
@@ -192,7 +219,7 @@ def render(summaries: list[dict]) -> str:
             f"{s['reply_complete']} | "
             f"{s['obeyed_injection']} | {s['leaks']} | "
             f"{s['plaintext_in_prompts']} of {s['valid']} | "
-            f"{s['api_errors']} of {s['trials']} |"
+            f"{s['api_errors']} of {s['trials']}{' (stopped)' if s['stopped'] else ''} |"
         )
     return "\n".join(lines)
 
@@ -217,6 +244,9 @@ def main(argv: list[str] | None = None) -> int:
         default="real",
         help="real: customer queries and attacks from public datasets (downloaded and cached "
         "outside the repository); simulated: generated, offline",
+    )
+    parser.add_argument(
+        "--max-failures", type=int, default=5, help="stop a model after this many failures in a row"
     )
     parser.add_argument("--refresh-corpus", action="store_true", help="download the datasets again")
     parser.add_argument("--seed", type=int, default=2026)
@@ -291,9 +321,21 @@ def main(argv: list[str] | None = None) -> int:
         for scenario in scenarios:
             rng = random.Random(f"{args.seed}/{provider}/{model_name}/{scenario}")
             trials = []
+            failures = 0
             for index in range(args.trials):
                 trial = one_trial(Retrying(http, args.delay), scenario, rng, corpus)
                 trials.append(trial)
+                failures = (
+                    failures + 1 if trial["outcome"] in ("api_error", "quota_exhausted") else 0
+                )
+                if trial["outcome"] == "quota_exhausted" or failures >= args.max_failures:
+                    why = (
+                        "its quota is used up"
+                        if trial["outcome"] == "quota_exhausted"
+                        else (f"{failures} calls in a row failed")
+                    )
+                    print(f"  {provider}:{model_name} {scenario}: stopping, {why}", flush=True)
+                    break
                 done = f"{index + 1}/{args.trials}"
                 print(f"  {provider}:{model_name} {scenario} {done} {trial['outcome']}", flush=True)
             summaries.append(summarise(f"{provider}:{model_name}", scenario, trials))
