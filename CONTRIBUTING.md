@@ -66,7 +66,7 @@ Dependabot proposes updates; do not replace a SHA with a tag.
 Before opening a PR:
 
 ```bash
-pytest && ruff check src tests examples evaluation
+pytest && ruff check src tests examples evaluation && mypy
 ```
 
 CI runs both on Linux, macOS and Windows with Python 3.10, 3.13 and 3.14, plus

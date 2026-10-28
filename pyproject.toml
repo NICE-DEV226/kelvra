@@ -22,6 +22,7 @@ classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Developers",
     "Topic :: Security",
+    "Typing :: Typed",
     "Programming Language :: Python :: 3",
 ]
 
@@ -52,7 +53,9 @@ seal = ["cryptography>=43"]
 # pytest 9.0.3 is the first release without GHSA-6w46-j5rx-g56g (tmpdir handling).
 # hypothesis generates the inputs the properties in tests/test_properties.py are checked
 # against, and shrinks a failure to the smallest one that still fails.
-dev = ["pytest>=9.0.3,<10", "ruff==0.16.0", "jsonschema>=4.20", "hypothesis>=6.100"]
+# mypy is pinned exactly for the same reason as ruff, and is here because the package ships py.typed:
+# saying it is typed is only honest while something checks.
+dev = ["pytest>=9.0.3,<10", "ruff==0.16.0", "mypy==2.4.0", "jsonschema>=4.20", "hypothesis>=6.100"]
 
 [project.scripts]
 kelvra = "kelvra.cli:main"
@@ -70,6 +73,15 @@ testpaths = ["tests"]
 # its own test (pytest.warns), and would otherwise bury every other warning.
 filterwarnings = ["ignore:no signing key:kelvra.provenance.UnsignedRecordWarning"]
 pythonpath = ["src"]
+
+[tool.mypy]
+python_version = "3.10"
+files = ["src/kelvra"]
+# Without this a function with no annotations is not checked at all, which is most of an untyped
+# codebase and the part that matters.
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
 
 [tool.ruff]
 line-length = 100

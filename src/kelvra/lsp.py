@@ -31,6 +31,15 @@ from dataclasses import dataclass
 from typing import Literal
 
 from .analysis import analyse
+from .editing import (
+    RenameError,
+    declaration_edit,
+    definition,
+    occurrence_at,
+    references,
+    rename,
+    suggestions,
+)
 from .klv import KlvError, parse_detailed, split_lines
 from .policy import Policy, check_flow
 
@@ -114,7 +123,7 @@ def diagnostics_for(text: str, *, filename: str | None = None) -> list[Diagnosti
     return sorted(diagnostics, key=lambda d: (d.line, d.code))
 
 
-# -- hover ------------------------------------------------------------------
+# -- hover ----------------------------------------------------------------------
 
 
 def word_at(text: str, line: int, character: int) -> str | None:
@@ -209,9 +218,7 @@ def _describe_source(policy: Policy, name: str) -> str:
     if source.label.is_untrusted:
         lines.append("- **untrusted** — nothing vouches for this data")
 
-    reaches = sorted(
-        s for s in policy.sinks if _reachable(policy, source.label, s)
-    )
+    reaches = sorted(s for s in policy.sinks if _reachable(policy, source.label, s))
     lines.append("")
     lines.append(
         "**Can reach** " + ", ".join(f"`{s}`" for s in reaches)
@@ -258,7 +265,7 @@ def _describe_name(policy: Policy, name: str, declared_line: int) -> str:
     return "\n".join(lines)
 
 
-# -- symbols and completion -------------------------------------------------
+# -- symbols and completion -----------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -283,48 +290,49 @@ def symbols_for(text: str) -> list[Symbol]:
 
 
 def completions_for(text: str, line: int, character: int) -> list[tuple[str, str]]:
-    """``(label, detail)`` pairs for the cursor position."""
-    lines = split_lines(text)
-    prefix = lines[line - 1][:character] if 1 <= line <= len(lines) else ""
+    """``(label, detail)`` pairs for the cursor (see :func:`kelvra.editing.suggestions`)."""
+    return [(item.label, item.detail) for item in suggestions(text, line, character)]
 
+
+# -- jumping, renaming, fixing --------------------------------------------------
+
+
+_UNDECLARED = re.compile(r"(principal|purpose) '([^']+)' is not declared")
+
+
+def quick_fix_for(text: str, message: str) -> tuple[str, int, int, str] | None:
+    """For an "X is not declared" error: (title, line, column, text to insert), or ``None``."""
+    found = _UNDECLARED.search(message)
+    if not found:
+        return None
+    space, name = found.groups()
+    line, column, insert = declaration_edit(text, name, space)
+    return f"Declare {space} '{name}'", line, column, insert
+
+
+DEFAULT_DEBOUNCE_MS = 250
+MAX_DEBOUNCE_MS = 5000
+
+
+def debounce_seconds(environ: dict[str, str] | None = None) -> float:
+    """How long the server waits after the last edit before it analyses (seconds).
+
+    250 ms unless ``KELVRA_LSP_DEBOUNCE_MS`` says otherwise: 0 turns the wait off, anything
+    that is not a number between 0 and 5000 is ignored. Opening and saving a document are
+    never delayed. The analysis used to run on every keystroke, and on a large policy one
+    run takes long enough that typing queued up behind it.
+    """
+    env = __import__("os").environ if environ is None else environ
+    raw = env.get("KELVRA_LSP_DEBOUNCE_MS")
+    if raw is None:
+        return DEFAULT_DEBOUNCE_MS / 1000
     try:
-        result = parse_detailed(text)
-        known = sorted(result.name_lines)
-    except KlvError:
-        known = sorted(set(re.findall(r"^(?:principal|purpose)\s+(.+)$", text, re.MULTILINE)))
-        known = sorted({n.strip() for line_ in known for n in line_.split(",")})
-
-    if re.search(r"(confidential|endorsed|consent)\s*\([^)]*$", prefix):
-        return [(name, "declared principal") for name in known]
-
-    # Indentation is checked before emptiness, and the order matters: an
-    # indented blank line is blank *and* indented, and offering top-level
-    # declarations inside a block would be exactly wrong there.
-    if prefix.startswith((" ", "\t")):
-        return [
-            ("accepts", "what this sink receives"),
-            ("requires", "endorsed(...) or consent(...)"),
-            ("integrity", "trusted or untrusted"),
-            ("confidential", "confidential(a, b)"),
-            ("public", "readable by anyone"),
-            ("from", "documentation only"),
-            ("to", "what this grants"),
-            ("audit", "always"),
-        ]
-
-    if not prefix.strip():
-        return [
-            ("source", "where data enters"),
-            ("sink", "where data leaves"),
-            ("declassify", "lower confidentiality"),
-            ("endorse", "raise integrity"),
-            ("principal", "declare names"),
-            ("purpose", "declare purposes"),
-        ]
-    return []
-
-
-# -- the protocol boundary --------------------------------------------------
+        millis = float(raw)
+    except ValueError:
+        return DEFAULT_DEBOUNCE_MS / 1000
+    if not 0 <= millis <= MAX_DEBOUNCE_MS:  # also false for NaN
+        return DEFAULT_DEBOUNCE_MS / 1000
+    return millis / 1000
 
 
 def serve() -> int:
@@ -338,6 +346,10 @@ def serve() -> int:
             file=__import__("sys").stderr,
         )
         return 1
+
+    import asyncio
+
+    from pygls import exceptions as lsp_errors
 
     from . import __version__
 
@@ -355,8 +367,7 @@ def serve() -> int:
         "endorse": lsp.SymbolKind.Function,
     }
 
-    def publish(uri: str) -> None:
-        text = server.workspace.get_text_document(uri).source
+    def send(uri: str, found: list[Diagnostic]) -> None:
         server.text_document_publish_diagnostics(
             lsp.PublishDiagnosticsParams(
                 uri=uri,
@@ -371,16 +382,48 @@ def serve() -> int:
                         source="kelvra",
                         message=d.full_message,
                     )
-                    for d in diagnostics_for(text, filename=uri)
+                    for d in found
                 ],
             )
         )
 
+    def publish(uri: str) -> None:
+        text = server.workspace.get_text_document(uri).source
+        send(uri, diagnostics_for(text, filename=uri))
+
+    delay = debounce_seconds()
+    generation: dict[str, int] = {}
+    pending: dict[str, asyncio.Future] = {}
+
+    def supersede(uri: str) -> int:
+        """Note that ``uri`` changed: whatever was waiting or running for it is now stale."""
+        generation[uri] = generation.get(uri, 0) + 1
+        waiting = pending.pop(uri, None)
+        if waiting is not None:
+            waiting.cancel()
+        return generation[uri]
+
+    async def publish_after_the_last_edit(uri: str, mine: int) -> None:
+        await asyncio.sleep(delay)
+        text = server.workspace.get_text_document(uri).source
+        loop = asyncio.get_running_loop()
+        found = await loop.run_in_executor(None, lambda: diagnostics_for(text, filename=uri))
+        # The analysis ran off the event loop; a newer edit may have arrived meanwhile, in which
+        # case these diagnostics describe text that is gone and must not replace newer ones.
+        if generation.get(uri) == mine:
+            send(uri, found)
+
     @server.feature(lsp.TEXT_DOCUMENT_DID_OPEN)
-    @server.feature(lsp.TEXT_DOCUMENT_DID_CHANGE)
     @server.feature(lsp.TEXT_DOCUMENT_DID_SAVE)
-    def _on_change(params) -> None:
+    def _on_open_or_save(params) -> None:
+        supersede(params.text_document.uri)
         publish(params.text_document.uri)
+
+    @server.feature(lsp.TEXT_DOCUMENT_DID_CHANGE)
+    async def _on_change(params) -> None:
+        uri = params.text_document.uri
+        mine = supersede(uri)
+        pending[uri] = asyncio.ensure_future(publish_after_the_last_edit(uri, mine))
 
     @server.feature(lsp.TEXT_DOCUMENT_HOVER)
     def _on_hover(params):
@@ -388,9 +431,7 @@ def serve() -> int:
         markdown = hover_at(text, params.position.line + 1, params.position.character)
         if markdown is None:
             return None
-        return lsp.Hover(
-            contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=markdown)
-        )
+        return lsp.Hover(contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=markdown))
 
     @server.feature(lsp.TEXT_DOCUMENT_DOCUMENT_SYMBOL)
     def _on_symbols(params):
@@ -412,30 +453,145 @@ def serve() -> int:
             for symbol in symbols_for(text)
         ]
 
+    _COMPLETION_KIND = {
+        "keyword": lsp.CompletionItemKind.Keyword,
+        "principal": lsp.CompletionItemKind.Variable,
+        "purpose": lsp.CompletionItemKind.EnumMember,
+        "constant": lsp.CompletionItemKind.Constant,
+        "function": lsp.CompletionItemKind.Function,
+        "snippet": lsp.CompletionItemKind.Snippet,
+    }
+
     @server.feature(
         lsp.TEXT_DOCUMENT_COMPLETION,
         lsp.CompletionOptions(trigger_characters=["(", ",", " "]),
     )
     def _on_completion(params):
         text = server.workspace.get_text_document(params.text_document.uri).source
-        return lsp.CompletionList(
-            is_incomplete=False,
-            items=[
-                lsp.CompletionItem(label=label, detail=detail)
-                for label, detail in completions_for(
-                    text, params.position.line + 1, params.position.character
+        items = []
+        for order, item in enumerate(
+            suggestions(text, params.position.line + 1, params.position.character)
+        ):
+            items.append(
+                lsp.CompletionItem(
+                    label=item.label,
+                    detail=item.detail,
+                    kind=_COMPLETION_KIND[item.kind],
+                    documentation=(
+                        lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=item.documentation)
+                        if item.documentation
+                        else None
+                    ),
+                    insert_text=item.insert,
+                    insert_text_format=(
+                        lsp.InsertTextFormat.Snippet
+                        if item.insert
+                        else lsp.InsertTextFormat.PlainText
+                    ),
+                    sort_text=f"{order:03d}",  # keep the order the logic chose, not alphabetical
+                    command=(
+                        lsp.Command(title="Suggest", command="editor.action.triggerSuggest")
+                        if item.retrigger
+                        else None
+                    ),
                 )
-            ],
+            )
+        return lsp.CompletionList(is_incomplete=False, items=items)
+
+    def _range(item) -> lsp.Range:
+        return lsp.Range(
+            start=lsp.Position(line=item.line - 1, character=item.start),
+            end=lsp.Position(line=item.line - 1, character=item.end),
         )
+
+    @server.feature(lsp.TEXT_DOCUMENT_DEFINITION)
+    def _on_definition(params):
+        text = server.workspace.get_text_document(params.text_document.uri).source
+        found = definition(text, params.position.line + 1, params.position.character)
+        return lsp.Location(uri=params.text_document.uri, range=_range(found)) if found else None
+
+    @server.feature(lsp.TEXT_DOCUMENT_REFERENCES)
+    def _on_references(params):
+        text = server.workspace.get_text_document(params.text_document.uri).source
+        found = references(
+            text,
+            params.position.line + 1,
+            params.position.character,
+            params.context.include_declaration,
+        )
+        return [lsp.Location(uri=params.text_document.uri, range=_range(i)) for i in found]
+
+    @server.feature(lsp.TEXT_DOCUMENT_DOCUMENT_HIGHLIGHT)
+    def _on_highlight(params):
+        text = server.workspace.get_text_document(params.text_document.uri).source
+        found = references(text, params.position.line + 1, params.position.character)
+        return [
+            lsp.DocumentHighlight(
+                range=_range(i),
+                kind=(
+                    lsp.DocumentHighlightKind.Write
+                    if i.role == "decl"
+                    else lsp.DocumentHighlightKind.Read
+                ),
+            )
+            for i in found
+        ]
+
+    @server.feature(lsp.TEXT_DOCUMENT_PREPARE_RENAME)
+    def _on_prepare_rename(params):
+        text = server.workspace.get_text_document(params.text_document.uri).source
+        here = occurrence_at(text, params.position.line + 1, params.position.character)
+        if here is None:
+            return None
+        return lsp.PrepareRenamePlaceholder(range=_range(here), placeholder=here.name)
+
+    @server.feature(lsp.TEXT_DOCUMENT_RENAME, lsp.RenameOptions(prepare_provider=True))
+    def _on_rename(params):
+        text = server.workspace.get_text_document(params.text_document.uri).source
+        try:
+            found = rename(
+                text, params.position.line + 1, params.position.character, params.new_name
+            )
+        except RenameError as error:
+            raise lsp_errors.JsonRpcInvalidParams(str(error)) from None
+        edits = [lsp.TextEdit(range=_range(i), new_text=params.new_name) for i in found]
+        return lsp.WorkspaceEdit(changes={params.text_document.uri: edits})
+
+    @server.feature(
+        lsp.TEXT_DOCUMENT_CODE_ACTION,
+        lsp.CodeActionOptions(code_action_kinds=[lsp.CodeActionKind.QuickFix]),
+    )
+    def _on_code_action(params):
+        text = server.workspace.get_text_document(params.text_document.uri).source
+        actions = []
+        for diagnostic in params.context.diagnostics:
+            fix = quick_fix_for(text, diagnostic.message)
+            if fix is None:
+                continue
+            title, line, column, insert = fix
+            point = lsp.Position(line=line - 1, character=column)
+            edit = lsp.TextEdit(range=lsp.Range(start=point, end=point), new_text=insert)
+            actions.append(
+                lsp.CodeAction(
+                    title=title,
+                    kind=lsp.CodeActionKind.QuickFix,
+                    diagnostics=[diagnostic],
+                    is_preferred=True,
+                    edit=lsp.WorkspaceEdit(changes={params.text_document.uri: [edit]}),
+                )
+            )
+        return actions
 
     server.start_io()
     return 0
 
 
 __all__ = [
+    "DEFAULT_DEBOUNCE_MS",
     "Diagnostic",
     "Symbol",
     "completions_for",
+    "debounce_seconds",
     "diagnostics_for",
     "hover_at",
     "serve",

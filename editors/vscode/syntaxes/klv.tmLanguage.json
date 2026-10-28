@@ -88,8 +88,8 @@
       ]
     },
     "constant": {
-      "comment": "Lattice extremes and audit modes. public and trusted are NOT synonyms -- see spec/labels.md section 2.",
-      "match": "\\b(public|untrusted|trusted|always|never)\\b",
+      "comment": "Lattice extremes and the one audit mode. public and trusted are NOT synonyms -- see spec/labels.md section 2.",
+      "match": "\\b(public|untrusted|trusted|always)\\b",
       "name": "constant.language.klv"
     },
     "number": {

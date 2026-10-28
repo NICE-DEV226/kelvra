@@ -252,9 +252,14 @@ def test_completing_at_the_left_margin_offers_declarations():
     assert {"source", "sink", "declassify", "endorse"} <= labels
 
 
-def test_completing_indented_offers_clauses():
+def test_completing_indented_offers_the_clauses_of_the_block_the_cursor_is_in():
+    """GOOD ends with a sink, which has no ``integrity`` clause: the parser refuses it there."""
     labels = {label for label, _ in completions_for(GOOD + "    ", 8, 4)}
-    assert {"accepts", "requires", "integrity"} <= labels
+    assert {"accepts", "requires", "for"} == labels
+    source = "policy P\nprincipal a\nsource s\n    "
+    assert {"confidential", "public", "integrity"} == {
+        label for label, _ in completions_for(source, 4, 4)
+    }
 
 
 def test_completion_still_works_on_an_unparseable_file():
@@ -355,3 +360,135 @@ def test_the_server_speaks_lsp_over_stdio():
     # Diagnostics must land on the sink they describe, not at the top of the
     # file. LSP lines are zero-based; the sink declarations are not on line 1.
     assert all(d["range"]["start"]["line"] > 0 for d in published)
+
+
+# -- the wait after an edit ---------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (None, 0.25),
+        ("0", 0.0),
+        ("50", 0.05),
+        ("1000", 1.0),
+        ("5000", 5.0),
+        ("5001", 0.25),
+        ("-1", 0.25),
+        ("abc", 0.25),
+        ("", 0.25),
+        ("nan", 0.25),
+        ("inf", 0.25),
+    ],
+)
+def test_the_wait_after_an_edit_is_read_from_the_environment_and_bad_values_are_ignored(
+    value, expected
+):
+    from kelvra.lsp import debounce_seconds
+
+    env = {} if value is None else {"KELVRA_LSP_DEBOUNCE_MS": value}
+    assert debounce_seconds(env) == expected
+
+
+def test_many_quick_edits_are_analysed_once_and_the_answer_describes_the_last_one():
+    """The server used to analyse on every keystroke. Counted, not timed: nothing here depends on
+    how fast the machine is, only on five edits arriving inside one second."""
+    pytest.importorskip("pygls")
+
+    import json
+    import os
+    import queue
+    import subprocess
+    import sys
+    import threading
+
+    def frame(payload: dict) -> bytes:
+        body = json.dumps(payload).encode()
+        return b"Content-Length: %d\r\n\r\n%s" % (len(body), body)
+
+    env = dict(os.environ, KELVRA_LSP_DEBOUNCE_MS="1000", PYTHONDONTWRITEBYTECODE="1")
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "kelvra.cli", "lsp"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        env=env,
+    )
+    messages: queue.Queue = queue.Queue()
+
+    def read_frames() -> None:
+        stream = proc.stdout
+        while True:
+            length = None
+            while True:
+                line = stream.readline()
+                if not line:
+                    return
+                if line in (b"\r\n", b"\n"):
+                    break
+                if line.lower().startswith(b"content-length:"):
+                    length = int(line.split(b":")[1])
+            if length is None:
+                return
+            messages.put(json.loads(stream.read(length)))
+
+    threading.Thread(target=read_frames, daemon=True).start()
+
+    def send(payload: dict) -> None:
+        proc.stdin.write(frame(payload))
+        proc.stdin.flush()
+
+    def published(within: float):
+        found = []
+        try:
+            while True:
+                message = messages.get(timeout=within)
+                if message.get("method") == "textDocument/publishDiagnostics":
+                    found.append(message["params"])
+        except queue.Empty:
+            return found
+
+    uri = "file:///edited.klv"
+    try:
+        send({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+              "params": {"processId": None, "rootUri": None, "capabilities": {}}})  # fmt: skip
+        send({"jsonrpc": "2.0", "method": "initialized", "params": {}})
+        send({"jsonrpc": "2.0", "method": "textDocument/didOpen",
+              "params": {"textDocument": {"uri": uri, "languageId": "klv", "version": 1,
+                                          "text": GOOD}}})  # fmt: skip
+        # the open is answered at once; wait for it by looking for the first publication
+        first = None
+        for _ in range(60):
+            batch = published(within=0.5)
+            if batch:
+                first = batch
+                break
+        assert first, "opening a document was not answered"
+
+        edits = [
+            "policy",
+            "policy P",
+            "policy P\nprincipal",
+            "policy P\nprinciple a",
+            "policy P\nbogus\n",
+        ]
+        for version, text in enumerate(edits, start=2):
+            send({"jsonrpc": "2.0", "method": "textDocument/didChange",
+                  "params": {"textDocument": {"uri": uri, "version": version},
+                             "contentChanges": [{"text": text}]}})  # fmt: skip
+
+        after = []
+        for _ in range(40):  # up to 20 s for the one expected answer
+            after += published(within=0.5)
+            if after:
+                break
+        after += published(within=2.5)  # and then a quiet period in which no second one may come
+        assert len(after) == 1, f"{len(after)} publications for five edits"
+        assert any("unknown keyword 'bogus'" in d["message"] for d in after[0]["diagnostics"])
+    finally:
+        send({"jsonrpc": "2.0", "id": 2, "method": "shutdown", "params": None})
+        send({"jsonrpc": "2.0", "method": "exit", "params": None})
+        try:
+            proc.wait(timeout=30)
+        except subprocess.TimeoutExpired:  # pragma: no cover
+            proc.kill()

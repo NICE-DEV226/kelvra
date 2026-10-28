@@ -277,14 +277,15 @@ def test_a_source_with_explicit_integrity_does_not_warn_about_it():
 # -- the command line ---------------------------------------------------------
 
 
-def test_json_for_one_file_is_an_object_and_for_several_an_array(tmp_path, capsys):
+def test_json_is_an_array_for_one_file_and_for_several(tmp_path, capsys):
+    """It used to be an object for one file; a pipeline should not have to branch on the count."""
     import json
 
     a, b = tmp_path / "a.klv", tmp_path / "b.klv"
     a.write_text(POLICY, encoding="utf-8")
     b.write_text(POLICY, encoding="utf-8")
     main(["check", "--json", str(a)])
-    assert isinstance(json.loads(capsys.readouterr().out), dict)
+    assert [r["file"] for r in json.loads(capsys.readouterr().out)] == [str(a)]
     main(["check", "--json", str(a), str(b)])
     assert [r["file"] for r in json.loads(capsys.readouterr().out)] == [str(a), str(b)]
 

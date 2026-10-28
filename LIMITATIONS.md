@@ -14,6 +14,16 @@ For what Kelvra does not *defend against*, see the [threat model](spec/threat-mo
 
 **Label creep.** Any label propagation drifts: keep joining labels and eventually everything is confidential and nothing is permitted. This is the standard practical failure mode of dynamic IFC. It is now measured for one concrete form ([evaluation/README.md](evaluation/README.md#label-creep-with-a-number)): an agent that reads six documents in one model call can hand each result only to someone who may read all six, so about 98% of legitimate deliveries are refused, against none when each document gets its own call. That is the one mitigation Kelvra has, and it is a discipline for whoever writes the pipeline, not something the library does for them. The labels in that measurement are random, and how often a real pipeline can be split is not known. If you have seen this solved well in production, please open an issue.
 
+**Callbacks see plaintext, and closures are not tracked.** `map(fn)`, `model_call(produce=fn)` and
+`declassify(transform=fn)` hand the raw payload to a function, because a function that cannot see a value cannot
+compute with it. Kelvra labels the values it is *given*; it does not follow what the function reads on the side. A
+function that closes over a confidential value and returns it yields a result labelled only with the inputs, and that
+result can be emitted to a sink the confidential value could never reach (demonstrated in
+`tests/test_callbacks_known_limit.py`). The way to be safe is to pass every value a callback needs as an input, so its
+label joins in; nothing enforces that. So `unsafe_value` is **not** the only hole: until this was written down the
+docstring said it was. The same holds for code that reads a value through a global or an attribute. A static or runtime
+check for captured values would be a heuristic (defaults, globals and attributes escape it), which is why none exists.
+
 **Propagation granularity is undecided.** Per value, per message, per tool call? Each choice trades precision against overhead, and the answer should come from observing real pipelines rather than from reasoning.
 
 **Persistent memory is unaddressed.** An agent that keeps state across runs carries labels across runs too. Recent work identifies cross-session persistence as a major axis. Kelvra says nothing about it.
@@ -22,7 +32,27 @@ For what Kelvra does not *defend against*, see the [threat model](spec/threat-mo
 
 **Compiling to third-party engines is untested.** The positioning depends on being able to translate a `.klv` policy into the input of an existing engine (OPA/Rego, or a FIDES-style system). Nothing has been attempted. If this turns out to be impractical, the positioning needs rethinking.
 
-**No performance budget.** Commercial guardrails advertise sub-50ms. Nothing indicates label propagation fits in that envelope, and no measurement exists.
+**Performance has a first measurement and no budget.** `python evaluation/scale.py` reproduces the table below
+(Python 3.14.8, Linux, one laptop-class machine, 2026-10-27; yours will differ, the *shape* will not):
+
+| what | size | time |
+|---|---|---|
+| parse | 1,000 sources, 1,000 sinks, 50 declassifiers | 36 ms |
+| analyse | the same policy | 48 ms |
+| analyse | 400 x 400 x 10, useless declassifiers | 80 ms |
+| analyse | 400 x 400 x 10, every label and sink different | 1.7 s |
+| read + emit | 20,000 pairs (40,000 events) | 0.9 s |
+| record (chain and sign) / verify | 40,000 events (9 MB of JSON) | 0.26 s / 0.39 s |
+| held in memory | per event, kept until `record()` | 454 B (1,000,000 events is about 454 MB) |
+| gateway | one tool call, request and reply | 84 us |
+
+This is Kelvra's own work, with no model, network or real agent in it. Whether it fits a product's envelope is a
+question about that product; the "sub-50 ms" figure commercial guardrails advertise is not comparable and is not
+claimed. Two things to know. The unused-declassifier analysis was cubic until a measurement showed it (35 s for 800 x
+800 x 10); it is now close to linear unless every source and sink is different *and* every declassifier matters to every
+sink, which is the 1.7 s row and still grows with the product. And **a run holds all its events until `record()`
+closes it**: one `Kelvra` per task bounds that naturally; an agent that lives for millions of events would need the
+record cut into segments, which is not built.
 
 **Format versioning is unspecified.** The provenance record carries a version field. There is no compatibility policy behind it.
 

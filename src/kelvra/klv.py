@@ -238,9 +238,7 @@ def parse_detailed(text: str, *, filename: str | None = None) -> ParseResult:
         # not content; it is the one format character tolerated, once, at the start.
         lines = _scan(text.removeprefix("\ufeff"))
         if not lines:
-            raise KlvError(
-                "empty policy file", 1, "", "expected 'policy <name>' on the first line"
-            )
+            raise KlvError("empty policy file", 1, "", "expected 'policy <name>' on the first line")
 
         state = _State(lines)
         state.parse_header()
@@ -367,8 +365,7 @@ class _State:
                     f"unknown keyword {keyword!r} at top level",
                     line.number,
                     line.raw,
-                    f"expected version, principal, purpose, or one of: "
-                    f"{', '.join(BLOCK_KEYWORDS)}",
+                    f"expected version, principal, purpose, or one of: {', '.join(BLOCK_KEYWORDS)}",
                 )
 
     def parse_version(self, line: _Line) -> None:
@@ -376,12 +373,7 @@ class _State:
         # ``str.isdigit()`` is true for characters such as '²' that ``int()``
         # rejects, and ``int()`` refuses very long digit strings. Both used to
         # escape as ValueError instead of a located KlvError.
-        if (
-            len(parts) != 2
-            or not parts[1].isascii()
-            or not parts[1].isdigit()
-            or len(parts[1]) > 9
-        ):
+        if len(parts) != 2 or not parts[1].isascii() or not parts[1].isdigit() or len(parts[1]) > 9:
             raise KlvError(
                 "'version' takes a single integer of at most 9 ASCII digits",
                 line.number,
@@ -553,9 +545,7 @@ class _State:
             keyword = _keyword(line.text)
             if keyword == "accepts":
                 if audience is not None:
-                    raise KlvError(
-                        f"sink {name!r} declares 'accepts' twice", line.number, line.raw
-                    )
+                    raise KlvError(f"sink {name!r} declares 'accepts' twice", line.number, line.raw)
                 audience = self.parse_audience(line)
             elif keyword == "requires":
                 endorsement, consent = self.parse_requirement(line, endorsement, consent)
@@ -635,9 +625,7 @@ class _State:
             return endorsement | self.principals_of(names, line), consent
         if kind == "consent":
             if len(names) != 1:
-                raise KlvError(
-                    "'consent' takes exactly one principal", line.number, line.raw
-                )
+                raise KlvError("'consent' takes exactly one principal", line.number, line.raw)
             if consent is not None:
                 raise KlvError(
                     "a second 'requires consent' on the same declaration",

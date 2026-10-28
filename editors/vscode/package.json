@@ -11,10 +11,12 @@
     "directory": "editors/vscode"
   },
   "engines": {
-    "vscode": "^1.75.0"
+    "vscode": "^1.82.0"
   },
   "categories": [
-    "Programming Languages"
+    "Programming Languages",
+    "Snippets",
+    "Linters"
   ],
   "contributes": {
     "languages": [
@@ -28,7 +30,11 @@
         "extensions": [
           ".klv"
         ],
-        "configuration": "./language-configuration.json"
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/klv-light.svg",
+          "dark": "./images/klv-dark.svg"
+        }
       }
     ],
     "grammars": [
@@ -43,7 +49,42 @@
         "language": "klv",
         "path": "./snippets/klv.code-snippets"
       }
-    ]
+    ],
+    "commands": [
+      {
+        "command": "kelvra.restartServer",
+        "title": "Kelvra: Restart the language server"
+      },
+      {
+        "command": "kelvra.showServerLog",
+        "title": "Kelvra: Show the language server log"
+      }
+    ],
+    "configuration": {
+      "title": "Kelvra",
+      "properties": {
+        "kelvra.server.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Start the Kelvra language server for .klv files (diagnostics, hover, suggestions, rename). Colouring works without it."
+        },
+        "kelvra.server.command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "How to start the server, as a command and its arguments, for example `[\"/path/to/kelvra\"]` or `[\"python3\", \"-m\", \"kelvra.cli\"]`. `lsp` is added. Empty: look in `~/.local/share/kelvra/venv`, then on the PATH, then use `python3 -m kelvra.cli`."
+        },
+        "kelvra.diagnostics.delayMs": {
+          "type": "number",
+          "default": 250,
+          "minimum": 0,
+          "maximum": 5000,
+          "description": "How long to wait after the last edit before checking the policy, in milliseconds. 0 checks on every keystroke."
+        }
+      }
+    }
   },
   "keywords": [
     "kelvra",
@@ -52,5 +93,20 @@
     "information-flow",
     "ai-agents",
     "security"
-  ]
+  ],
+  "main": "./extension.js",
+  "icon": "images/icon.png",
+  "galleryBanner": {
+    "color": "#0A1E37",
+    "theme": "dark"
+  },
+  "activationEvents": [
+    "onLanguage:klv"
+  ],
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "scripts": {
+    "check": "node --check extension.js"
+  }
 }

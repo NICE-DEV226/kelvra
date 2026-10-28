@@ -32,6 +32,8 @@ an exact version.
   never removed it; hundreds of runs filled the disk quota and made unrelated tests fail
   intermittently. It is removed when the process ends.
 
+### Resolved after the feature-by-feature analysis
+
 - **Callbacks see plaintext, and closures are not tracked (N-01).** `Tainted`'s docstring said `unsafe_value` was the
   only way a payload leaves the label model and that grepping for it finds every hole. `map(fn)`,
   `model_call(produce=fn)` and `declassify(transform=fn)` also hand the raw payload to a function, and a function that
