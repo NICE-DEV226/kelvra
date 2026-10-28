@@ -54,7 +54,11 @@ if (!scenario.real) {
   };
 }
 if (scenario.home) ext.deps.homedir = () => scenario.home;
-if (scenario.platform) ext.deps.platform = () => scenario.platform;
+// Deterministic unless a test runs the real thing: the platform is "linux" by default, whatever
+// machine this runs on. (It used to be the host's, so on a Windows runner every path-shaped
+// expectation written with "/" failed.)
+const platform = scenario.platform || (scenario.real ? process.platform : "linux");
+ext.deps.platform = () => platform;
 
 (async () => {
   const out = { log };

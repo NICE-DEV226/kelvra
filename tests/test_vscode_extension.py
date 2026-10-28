@@ -270,3 +270,11 @@ def test_a_server_that_passes_the_check_but_fails_to_start_is_reported_not_throw
     [warning] = [m for m in out["log"]["messages"] if m["kind"] == "warning"]
     assert "did not start" in warning["text"] and "boom" in warning["text"]
     assert len(out["log"]["commands"]) == 2  # the extension is still alive
+
+
+@needs_node
+def test_the_harness_does_not_depend_on_the_machine_it_runs_on():
+    """Platform-shaped output must not change with the host: that failed on Windows runners."""
+    out = run({"mode": "candidates", "configured": [], "home": "/h"})
+    assert out["candidates"][0]["command"] == "/h/.local/share/kelvra/venv/bin/kelvra"
+    assert out["candidates"][2]["command"] == "python3"
