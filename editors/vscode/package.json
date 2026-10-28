@@ -1,7 +1,7 @@
 {
   "name": "kelvra-klv",
   "displayName": "Kelvra policy (.klv)",
-  "description": "Syntax highlighting for Kelvra policy files. Highlighting only -- there is no parser, so nothing here validates a policy.",
+  "description": "Syntax highlighting, snippets and editing rules for Kelvra policy files (.klv). Highlighting only: nothing here validates a policy. Run `kelvra check`, or connect `kelvra lsp` as a language server, for that.",
   "version": "0.1.0",
   "publisher": "kelvra",
   "license": "MIT OR Apache-2.0",
@@ -10,14 +10,24 @@
     "url": "https://github.com/NICE-DEV226/kelvra.git",
     "directory": "editors/vscode"
   },
-  "engines": { "vscode": "^1.75.0" },
-  "categories": ["Programming Languages"],
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
   "contributes": {
     "languages": [
       {
         "id": "klv",
-        "aliases": ["Kelvra policy", "klv"],
-        "extensions": [".klv"],
+        "aliases": [
+          "Kelvra policy",
+          "klv",
+          "kelvra"
+        ],
+        "extensions": [
+          ".klv"
+        ],
         "configuration": "./language-configuration.json"
       }
     ],
@@ -27,6 +37,20 @@
         "scopeName": "source.klv",
         "path": "./syntaxes/klv.tmLanguage.json"
       }
+    ],
+    "snippets": [
+      {
+        "language": "klv",
+        "path": "./snippets/klv.code-snippets"
+      }
     ]
-  }
+  },
+  "keywords": [
+    "kelvra",
+    "klv",
+    "policy",
+    "information-flow",
+    "ai-agents",
+    "security"
+  ]
 }

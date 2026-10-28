@@ -47,10 +47,19 @@ confidential and untrusted. See [spec/labels.md](../../spec/labels.md) §2.
 
 ## On GitHub
 
-GitHub renders `.klv` using the INI grammar, via an override in
-`.gitattributes`. Linguist only accepts new languages once they are in wide
-use, so a proper entry is a long way off. The override buys comment colouring
-and little else; this extension is the accurate one.
+GitHub renders `.klv` using the INI grammar, via an override in `.gitattributes`. Linguist only
+accepts new languages once they are in wide use, so a proper entry is a long way off. The override
+buys comment colouring and little else, and Markdown code fences tagged `klv` or `kelvra` get no
+colour at all. So the README shows the main policy as a picture, `assets/policy.svg`, drawn from the
+same grammar this extension ships (`editors/highlight.py`), with the text underneath for copying. A
+test fails if the picture and the grammar or the policy drift apart.
+
+## Snippets, word selection and indentation
+
+Type `source`, `sink`, `sinkguarded`, `declassify` or `endorse` and press Tab for a skeleton. A
+double click selects a whole name such as `inbox.imap` (the dot is part of it), and pressing Enter
+after a `source`, `sink`, `declassify` or `endorse` line indents the clauses. In Markdown, a code
+fence tagged `klv` or `kelvra` is coloured by this grammar in VS Code's own preview.
 
 ## Keeping it honest
 

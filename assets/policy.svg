@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="704" height="1232" viewBox="0 0 704 1232" role="img" aria-label="The SupportAgent policy: sources, sinks and declassifiers, with syntax colouring">
+<title>The SupportAgent policy: sources, sinks and declassifiers, with syntax colouring</title>
+<rect width="704" height="1232" rx="8" fill="#0d1117" stroke="#30363d"/>
+<g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" fill="#e6edf3">
+<text y="30"><tspan x="16.0" fill="#8b949e" font-style="italic"># ---------------------------------------------------------------------------</tspan></text>
+<text y="50"><tspan x="16.0" fill="#8b949e" font-style="italic"># Sources -- what enters, and what it carries.</tspan></text>
+<text y="70"><tspan x="16.0" fill="#8b949e" font-style="italic">#</tspan></text>
+<text y="90"><tspan x="16.0" fill="#8b949e" font-style="italic"># These labels are declarative and unverified. Getting one wrong makes</tspan></text>
+<text y="110"><tspan x="16.0" fill="#8b949e" font-style="italic"># everything downstream correct and useless. See spec/threat-model.md section 6.</tspan></text>
+<text y="130"><tspan x="16.0" fill="#8b949e" font-style="italic"># ---------------------------------------------------------------------------</tspan></text>
+<text y="170"><tspan x="16.0" fill="#ff7b72" font-weight="bold">source</tspan><tspan x="74.8" fill="#d2a8ff">inbox.imap</tspan></text>
+<text y="190"><tspan x="49.6" fill="#ffa657">confidential</tspan><tspan x="150.4" fill="#8b949e">(</tspan><tspan x="158.8" fill="#7ee787">customer</tspan><tspan x="226.0" fill="#8b949e">)</tspan><tspan x="242.8" fill="#79c0ff">for</tspan><tspan x="276.4" fill="#e3b341">support</tspan></text>
+<text y="210"><tspan x="49.6" fill="#79c0ff">integrity</tspan><tspan x="133.6" fill="#56d4dd">untrusted</tspan><tspan x="326.8" fill="#8b949e" font-style="italic"># arrives from outside; nobody vouches</tspan></text>
+<text y="250"><tspan x="16.0" fill="#ff7b72" font-weight="bold">source</tspan><tspan x="74.8" fill="#d2a8ff">crm.customer_record</tspan></text>
+<text y="270"><tspan x="49.6" fill="#ffa657">confidential</tspan><tspan x="150.4" fill="#8b949e">(</tspan><tspan x="158.8" fill="#7ee787">customer</tspan><tspan x="226.0" fill="#8b949e">,</tspan><tspan x="242.8" fill="#7ee787">support_team</tspan><tspan x="343.6" fill="#8b949e">)</tspan><tspan x="360.4" fill="#79c0ff">for</tspan><tspan x="394.0" fill="#e3b341">support</tspan></text>
+<text y="290"><tspan x="49.6" fill="#79c0ff">integrity</tspan><tspan x="133.6" fill="#56d4dd">trusted</tspan></text>
+<text y="350"><tspan x="16.0" fill="#8b949e" font-style="italic"># ---------------------------------------------------------------------------</tspan></text>
+<text y="370"><tspan x="16.0" fill="#8b949e" font-style="italic"># Sinks -- what each exit accepts.</tspan></text>
+<text y="390"><tspan x="16.0" fill="#8b949e" font-style="italic"># ---------------------------------------------------------------------------</tspan></text>
+<text y="430"><tspan x="16.0" fill="#8b949e" font-style="italic"># A model provider is a sink like any other. Data sent to it has left the</tspan></text>
+<text y="450"><tspan x="16.0" fill="#8b949e" font-style="italic"># boundary -- see spec/threat-model.md section 3, adversary A5. Naming the</tspan></text>
+<text y="470"><tspan x="16.0" fill="#8b949e" font-style="italic"># provider as a principal makes sharing with it an explicit decision rather</tspan></text>
+<text y="490"><tspan x="16.0" fill="#8b949e" font-style="italic"># than a side effect of calling the model.</tspan></text>
+<text y="510"><tspan x="16.0" fill="#ff7b72" font-weight="bold">sink</tspan><tspan x="58.0" fill="#d2a8ff">llm.openai</tspan></text>
+<text y="530"><tspan x="49.6" fill="#79c0ff">accepts</tspan><tspan x="116.8" fill="#ffa657">confidential</tspan><tspan x="217.6" fill="#8b949e">(</tspan><tspan x="226.0" fill="#7ee787">model_provider</tspan><tspan x="343.6" fill="#8b949e">)</tspan></text>
+<text y="570"><tspan x="16.0" fill="#ff7b72" font-weight="bold">sink</tspan><tspan x="58.0" fill="#d2a8ff">slack.support_channel</tspan></text>
+<text y="590"><tspan x="49.6" fill="#79c0ff">accepts</tspan><tspan x="116.8" fill="#ffa657">confidential</tspan><tspan x="217.6" fill="#8b949e">(</tspan><tspan x="226.0" fill="#7ee787">support_team</tspan><tspan x="326.8" fill="#8b949e">)</tspan></text>
+<text y="630"><tspan x="16.0" fill="#ff7b72" font-weight="bold">sink</tspan><tspan x="58.0" fill="#d2a8ff">crm.write</tspan></text>
+<text y="650"><tspan x="49.6" fill="#79c0ff">accepts</tspan><tspan x="116.8" fill="#ffa657">confidential</tspan><tspan x="217.6" fill="#8b949e">(</tspan><tspan x="226.0" fill="#7ee787">customer</tspan><tspan x="293.2" fill="#8b949e">,</tspan><tspan x="310.0" fill="#7ee787">support_team</tspan><tspan x="410.8" fill="#8b949e">)</tspan></text>
+<text y="670"><tspan x="49.6" fill="#79c0ff">requires</tspan><tspan x="125.2" fill="#ffa657">endorsed</tspan><tspan x="192.4" fill="#8b949e">(</tspan><tspan x="200.8" fill="#7ee787">reviewer</tspan><tspan x="268.0" fill="#8b949e">)</tspan></text>
+<text y="690"><tspan x="49.6" fill="#79c0ff">requires</tspan><tspan x="125.2" fill="#ffa657">consent</tspan><tspan x="184.0" fill="#8b949e">(</tspan><tspan x="192.4" fill="#7ee787">customer</tspan><tspan x="259.6" fill="#8b949e">)</tspan><tspan x="310.0" fill="#8b949e" font-style="italic"># a human decision, bound to the data</tspan></text>
+<text y="750"><tspan x="16.0" fill="#8b949e" font-style="italic"># ---------------------------------------------------------------------------</tspan></text>
+<text y="770"><tspan x="16.0" fill="#8b949e" font-style="italic"># Declassification -- the only permitted crossings.</tspan></text>
+<text y="790"><tspan x="16.0" fill="#8b949e" font-style="italic">#</tspan></text>
+<text y="810"><tspan x="16.0" fill="#8b949e" font-style="italic"># Kelvra does not check that pii_redaction redacts anything. It guarantees</tspan></text>
+<text y="830"><tspan x="16.0" fill="#8b949e" font-style="italic"># this is the only declared way out, and that every use is recorded.</tspan></text>
+<text y="850"><tspan x="16.0" fill="#8b949e" font-style="italic"># ---------------------------------------------------------------------------</tspan></text>
+<text y="890"><tspan x="16.0" fill="#ff7b72" font-weight="bold">declassify</tspan><tspan x="108.4" fill="#d2a8ff">pii_redaction</tspan></text>
+<text y="910"><tspan x="49.6" fill="#79c0ff">from</tspan><tspan x="91.6" fill="#ffa657">confidential</tspan><tspan x="192.4" fill="#8b949e">(</tspan><tspan x="200.8" fill="#7ee787">customer</tspan><tspan x="268.0" fill="#8b949e">)</tspan></text>
+<text y="930"><tspan x="49.6" fill="#79c0ff">to</tspan><tspan x="91.6" fill="#ffa657">confidential</tspan><tspan x="192.4" fill="#8b949e">(</tspan><tspan x="200.8" fill="#7ee787">customer</tspan><tspan x="268.0" fill="#8b949e">,</tspan><tspan x="284.8" fill="#7ee787">support_team</tspan><tspan x="385.6" fill="#8b949e">)</tspan><tspan x="419.2" fill="#8b949e" font-style="italic"># widens the reader set</tspan></text>
+<text y="950"><tspan x="49.6" fill="#79c0ff">audit</tspan><tspan x="100.0" fill="#56d4dd">always</tspan></text>
+<text y="990"><tspan x="16.0" fill="#ff7b72" font-weight="bold">endorse</tspan><tspan x="83.2" fill="#d2a8ff">human_review</tspan></text>
+<text y="1010"><tspan x="49.6" fill="#79c0ff">from</tspan><tspan x="91.6" fill="#56d4dd">untrusted</tspan></text>
+<text y="1030"><tspan x="49.6" fill="#79c0ff">to</tspan><tspan x="91.6" fill="#ffa657">endorsed</tspan><tspan x="158.8" fill="#8b949e">(</tspan><tspan x="167.2" fill="#7ee787">reviewer</tspan><tspan x="234.4" fill="#8b949e">)</tspan></text>
+<text y="1050"><tspan x="49.6" fill="#79c0ff">requires</tspan><tspan x="125.2" fill="#ffa657">consent</tspan><tspan x="184.0" fill="#8b949e">(</tspan><tspan x="192.4" fill="#7ee787">reviewer</tspan><tspan x="259.6" fill="#8b949e">)</tspan><tspan x="326.8" fill="#8b949e" font-style="italic"># an endorsement somebody answers for</tspan></text>
+<text y="1070"><tspan x="49.6" fill="#79c0ff">audit</tspan><tspan x="100.0" fill="#56d4dd">always</tspan></text>
+<text y="1110"><tspan x="16.0" fill="#8b949e" font-style="italic"># Sending data to a remote model is a sharing decision, and it is recorded as</tspan></text>
+<text y="1130"><tspan x="16.0" fill="#8b949e" font-style="italic"># one. Kelvra cannot police what the provider does with it afterwards.</tspan></text>
+<text y="1150"><tspan x="16.0" fill="#ff7b72" font-weight="bold">declassify</tspan><tspan x="108.4" fill="#d2a8ff">share_with_model</tspan></text>
+<text y="1170"><tspan x="49.6" fill="#79c0ff">from</tspan><tspan x="91.6" fill="#ffa657">confidential</tspan><tspan x="192.4" fill="#8b949e">(</tspan><tspan x="200.8" fill="#7ee787">customer</tspan><tspan x="268.0" fill="#8b949e">)</tspan></text>
+<text y="1190"><tspan x="49.6" fill="#79c0ff">to</tspan><tspan x="91.6" fill="#ffa657">confidential</tspan><tspan x="192.4" fill="#8b949e">(</tspan><tspan x="200.8" fill="#7ee787">model_provider</tspan><tspan x="318.4" fill="#8b949e">)</tspan></text>
+<text y="1210"><tspan x="49.6" fill="#79c0ff">audit</tspan><tspan x="100.0" fill="#56d4dd">always</tspan></text>
+</g>
+</svg>

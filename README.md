@@ -90,6 +90,13 @@ The precedent is TypeScript, which never executes anything — `tsc` erases ever
 
 This parses and runs. It is [the actual policy](examples/support_agent/policy.klv) the demo enforces — not an illustration kept in step by hand. The syntax is **not final**.
 
+<p align="center">
+  <img src="./assets/policy.svg" alt="The SupportAgent policy, with syntax colouring: sources, sinks and declassifiers" />
+</p>
+
+<details>
+<summary>The same policy as text, to copy</summary>
+
 ```kelvra
 policy SupportAgent
 version 1
@@ -132,6 +139,8 @@ declassify share_with_model
     to   confidential(model_provider)
     audit always
 ```
+
+</details>
 
 About fifty lines. An auditor can read them and establish: three constrained exits; three crossings, each named — two that widen a reader set and one that grants an endorsement; and who must consent to the endorsement and to the CRM write. The agent's Python is untouched.
 
