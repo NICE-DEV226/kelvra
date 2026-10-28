@@ -27,8 +27,10 @@ const deps = {
 };
 
 function venvCommand() {
+  // The separator of the platform this is for, not of the machine running it: a path built for
+  // Windows is the same on any host, which is also what lets a test check it exactly.
   const windows = deps.platform() === "win32";
-  return path.join(
+  return (windows ? path.win32 : path.posix).join(
     deps.homedir(), ".local", "share", "kelvra", "venv",
     windows ? "Scripts" : "bin", windows ? "kelvra.exe" : "kelvra"
   );

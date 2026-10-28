@@ -158,11 +158,17 @@ def test_the_candidates_are_tried_in_a_fixed_order_and_the_setting_comes_first()
 
 
 @needs_node
-def test_on_windows_the_environment_and_python_are_the_windows_ones():
+def test_on_windows_the_environment_and_python_are_the_windows_ones_on_any_host():
+    """The path is built with the target platform's separators, so this reads the same on Linux,
+    macOS and Windows runners (a POSIX-style expectation failed on Windows before this)."""
     out = run({"mode": "candidates", "configured": [], "home": "C:\\Users\\u", "platform": "win32"})
-    environment, _, python = out["candidates"]
-    assert environment["command"].endswith("kelvra.exe") and "Scripts" in environment["command"]
-    assert python["command"] == "python"
+    environment, path_one, python = out["candidates"]
+    assert (
+        environment["command"] == "C:\\Users\\u\\.local\\share\\kelvra\\venv\\Scripts\\kelvra.exe"
+    )
+    assert path_one["command"] == "kelvra" and python["command"] == "python"
+    posix = run({"mode": "candidates", "configured": [], "home": "/home/u", "platform": "darwin"})
+    assert posix["candidates"][0]["command"] == "/home/u/.local/share/kelvra/venv/bin/kelvra"
 
 
 @needs_node
