@@ -53,6 +53,7 @@ class Chat(BaseHTTPRequestHandler):
     mode: ClassVar[str] = "copy"
     statuses: ClassVar[list[int]] = []
     seen_auth: ClassVar[list[str | None]] = []
+    seen_agents: ClassVar[list[str | None]] = []
     models: ClassVar[object] = None
 
     def log_message(self, *args):
@@ -67,6 +68,7 @@ class Chat(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self):
+        type(self).seen_agents.append(self.headers.get("User-Agent"))
         type(self).seen_auth.append(self.headers.get("Authorization"))
         self._send(200, type(self).models)
 
@@ -74,6 +76,7 @@ class Chat(BaseHTTPRequestHandler):
         cls = type(self)
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         cls.seen_auth.append(self.headers.get("Authorization"))
+        cls.seen_agents.append(self.headers.get("User-Agent"))
         if cls.statuses:
             status = cls.statuses.pop(0)
             if status != 200:
@@ -81,6 +84,10 @@ class Chat(BaseHTTPRequestHandler):
         prompt = body["messages"][1]["content"]
         tokens = live.tokens_in(prompt)
         text = f"{tokens['name']} {tokens['iban']} {tokens['phone']}"
+        if cls.mode == "partial":  # uses only the name token, as a model does when asked nothing
+            text = tokens["name"]
+        if cls.mode == "truncate":
+            text = text.replace(tokens["iban"], tokens["iban"][:-30])
         if cls.mode == "mangle":
             iban = tokens["iban"]
             text = text.replace(iban, iban[:-1] + ("A" if iban[-1] != "A" else "B"))
@@ -95,7 +102,11 @@ class Chat(BaseHTTPRequestHandler):
 
 @pytest.fixture
 def server(monkeypatch):
-    handler = type("H", (Chat,), {"statuses": [], "seen_auth": [], "mode": "copy", "models": None})
+    handler = type(
+        "H",
+        (Chat,),
+        {"statuses": [], "seen_auth": [], "seen_agents": [], "mode": "copy", "models": None},
+    )
     srv = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     url = f"http://127.0.0.1:{srv.server_address[1]}/v1"
@@ -166,7 +177,9 @@ def test_a_model_that_alters_one_character_is_caught_and_never_leaks(server, cap
     assert s["token_copy"].startswith("67% (8/12")  # two of three tokens survived, each time
     assert s["reply_complete"].startswith("0% (0/4") and s["leaks"] == 0
     raw = json.loads(out.read_text(encoding="utf-8"))["raw"][0]["trials"]
-    assert all(t["refusals"] == {"authentication": 1} for t in raw)
+    # refused either way: a changed last character is sometimes a non-canonical spelling
+    # ("malformed", counted as "refused") and sometimes a tag failure ("authentication")
+    assert all(t["refusals"] in ({"authentication": 1}, {"refused": 1}) for t in raw)
 
 
 def test_a_model_that_wraps_its_json_in_a_code_fence_is_still_understood(server, capsys, tmp_path):
@@ -489,3 +502,38 @@ def test_real_data_that_cannot_be_downloaded_says_how_to_run_offline(server, cap
 def test_real_attacks_need_real_data(server):
     with pytest.raises(SystemExit):
         live.main(["--target", "local:m", "--data", "simulated", "--scenario", "injected_real"])
+
+
+def test_requests_say_who_is_calling_because_some_providers_refuse_the_default_agent(server):
+    """Groq sits behind a firewall that answers 403 to Python's default User-Agent. Found live."""
+    server.models = {"data": [{"id": "m"}]}
+    live.main(["--list-models", "local"])
+    run("--trials", "1", "--scenario", "honest")
+    assert server.seen_agents and set(server.seen_agents) == {"kelvra-sealed-demo/1"}
+    assert not any("urllib" in (agent or "") for agent in server.seen_agents)
+
+
+def test_a_token_the_model_did_not_use_is_not_a_copy_error_but_a_cut_one_is(
+    server, capsys, tmp_path
+):
+    """A model that leaves a token out copied nothing wrongly; one that cuts it short did."""
+    out = tmp_path / "r.json"
+    server.mode = "partial"
+    run("--trials", "3", "--scenario", "honest", "--out", str(out))
+    [s] = summaries(capsys, out)
+    assert s["token_copy"].startswith("100% (3/3")  # every token it tried to copy was exact
+    assert s["tokens_used"].startswith("33% (3/9")  # but it used one in three
+    assert s["reply_complete"].startswith("0% (0/3")
+    server.mode = "truncate"
+    run("--trials", "3", "--scenario", "honest", "--out", str(out))
+    [s] = summaries(capsys, out)
+    assert s["token_copy"].startswith("67% (6/9")  # two exact, one altered, per trial
+    assert s["tokens_used"].startswith("100% (9/9")
+    raw = json.loads(out.read_text(encoding="utf-8"))["raw"][0]["trials"]
+    assert all(t["tokens_altered"] == 1 and t["tokens_copied_exactly"] == 2 for t in raw)
+
+
+def test_the_task_asks_the_model_to_confirm_the_details_so_that_tokens_are_needed():
+    models = load("models")
+    system = json.loads(models.HttpChatModel().request_body("p"))["messages"][0]["content"]
+    assert "confirm the name, IBAN and phone number" in system and "three tokens" in system

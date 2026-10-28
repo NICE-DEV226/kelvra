@@ -111,7 +111,8 @@ def list_models(base_url: str, key_env: str, timeout: float = 30.0) -> list[str]
     if not key:
         raise RuntimeError(f"set ${key_env} first")
     request = urllib.request.Request(
-        f"{base_url.rstrip('/')}/models", headers={"Authorization": f"Bearer {key}"}
+        f"{base_url.rstrip('/')}/models",
+        headers={"Authorization": f"Bearer {key}", "User-Agent": "kelvra-sealed-demo/1"},
     )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:

@@ -289,7 +289,8 @@ def test_the_adapter_never_shows_the_key_in_what_it_prints_or_raises(provider, m
     provider.status, provider.answer = 401, {"error": {"message": f"bad key {API_KEY}"}}
     with pytest.raises(RuntimeError) as excinfo:
         pipeline.Pipeline(model).run(CASE)
-    assert str(excinfo.value) == "the model endpoint answered HTTP 401"
+    # the provider's own message is reported, with the key it echoed masked out
+    assert str(excinfo.value) == "the model endpoint answered HTTP 401: bad key <key>"
     assert API_KEY not in repr(excinfo.value) and excinfo.value.__cause__ is None
 
 
@@ -346,3 +347,36 @@ def test_the_demo_policy_has_only_the_warnings_the_readme_explains():
         ("untrusted-reaches-sink", "mail.customer"),
     ]
     assert all(f.severity == "warning" for f in findings)
+
+
+@pytest.mark.parametrize(
+    "answer,expected",
+    [
+        ({"error": {"message": "model gone"}}, "HTTP 404: model gone"),
+        ([{"error": {"message": "listed form"}}], "HTTP 404: listed form"),
+        ({"error": {"message": "  spaced \n out  "}}, "HTTP 404: spaced out"),
+        ({"error": {"message": "x" * 500}}, "HTTP 404: " + "x" * 200),
+        ({"error": {"message": ""}}, "HTTP 404"),
+        ({"error": {}}, "HTTP 404"),
+        ({"error": "plain"}, "HTTP 404"),
+        ({}, "HTTP 404"),
+    ],
+)
+def test_the_providers_explanation_is_reported_cut_short_and_only_when_there_is_one(
+    provider, monkeypatch, answer, expected
+):
+    monkeypatch.setenv("TEST_LLM_KEY", API_KEY)
+    model = models.HttpChatModel(base_url=provider.url, key_env="TEST_LLM_KEY")
+    provider.status, provider.answer = 404, answer
+    with pytest.raises(RuntimeError) as excinfo:
+        model.complete("x")
+    assert str(excinfo.value) == f"the model endpoint answered {expected}"
+
+
+def test_an_error_body_that_is_not_json_adds_nothing(provider, monkeypatch):
+    monkeypatch.setenv("TEST_LLM_KEY", API_KEY)
+    model = models.HttpChatModel(base_url=provider.url, key_env="TEST_LLM_KEY")
+    provider.status, provider.answer = 500, "<html>oops</html>"  # json.dumps makes it a JSON string
+    with pytest.raises(RuntimeError) as excinfo:
+        model.complete("x")
+    assert str(excinfo.value) == "the model endpoint answered HTTP 500"
