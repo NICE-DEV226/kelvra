@@ -252,9 +252,14 @@ def test_completing_at_the_left_margin_offers_declarations():
     assert {"source", "sink", "declassify", "endorse"} <= labels
 
 
-def test_completing_indented_offers_clauses():
+def test_completing_indented_offers_the_clauses_of_the_block_the_cursor_is_in():
+    """GOOD ends with a sink, which has no ``integrity`` clause: the parser refuses it there."""
     labels = {label for label, _ in completions_for(GOOD + "    ", 8, 4)}
-    assert {"accepts", "requires", "integrity"} <= labels
+    assert {"accepts", "requires", "for"} == labels
+    source = "policy P\nprincipal a\nsource s\n    "
+    assert {"confidential", "public", "integrity"} == {
+        label for label, _ in completions_for(source, 4, 4)
+    }
 
 
 def test_completion_still_works_on_an_unparseable_file():

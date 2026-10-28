@@ -150,9 +150,7 @@ def _unguarded_relaxations(policy: Policy) -> list[Finding]:
                     severity="error",
                     subject=f"declassifier {name!r}",
                     name=name,
-                    message=(
-                        "makes data readable by everyone with no consent required"
-                    ),
+                    message=("makes data readable by everyone with no consent required"),
                     hint=(
                         "publishing is irreversible; add 'requires consent(<principal>)' "
                         "or widen to a named audience instead of 'public'"
@@ -187,8 +185,7 @@ def _unsatisfiable_sinks(policy: Policy) -> list[Finding]:
                 subject=f"sink {name!r}",
                 name=name,
                 message=(
-                    "no declared source can reach this sink, even after applying "
-                    "every declassifier"
+                    "no declared source can reach this sink, even after applying every declassifier"
                 ),
                 hint=reasons,
             )
@@ -228,9 +225,7 @@ def _injection_surface(policy: Policy) -> list[Finding]:
     """
     findings: list[Finding] = []
     untrusted = {
-        name: source
-        for name, source in policy.sources.items()
-        if source.label.is_untrusted
+        name: source for name, source in policy.sources.items() if source.label.is_untrusted
     }
     if not untrusted:
         return findings
@@ -363,9 +358,7 @@ def _unused_declassifiers(policy: Policy) -> list[Finding]:
         """The labels that reach ``sink`` once every declassifier has run; computed once."""
         key = id(sink)
         if key not in reachable:
-            reachable[key] = [
-                label for label in labels if _reaches(label, sink, policy, with_all)
-            ]
+            reachable[key] = [label for label in labels if _reaches(label, sink, policy, with_all)]
         return reachable[key]
 
     for name in sorted(policy.declassifiers):
@@ -438,8 +431,7 @@ def describe_reachability(policy: Policy) -> list[str]:
             lines.append(f"{sink_name}: unreachable")
             continue
         detail = ", ".join(
-            f"{n} (direct)" if n in direct else f"{n} (via declassification)"
-            for n in reachable
+            f"{n} (direct)" if n in direct else f"{n} (via declassification)" for n in reachable
         )
         lines.append(f"{sink_name}: {detail}")
     return lines
