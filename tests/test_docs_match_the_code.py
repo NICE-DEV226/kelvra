@@ -38,7 +38,9 @@ def test_the_readme_does_not_say_the_gateway_is_missing_while_it_exists():
 def test_the_extension_readme_does_not_say_there_is_no_parser():
     assert "no parser" not in EXTENSION.lower()
     assert "kelvra lsp" in EXTENSION
-    assert "does not start it" in EXTENSION  # and it is honest that the extension has no client
+    assert "does not start it" not in EXTENSION  # it does now: extension.js starts the server
+    assert (ROOT / "editors" / "vscode" / "extension.js").is_file()
+    assert "Not tested automatically: how it looks" in EXTENSION  # and what is not tested is said
 
 
 def test_the_grammar_colours_only_audit_words_the_parser_accepts():

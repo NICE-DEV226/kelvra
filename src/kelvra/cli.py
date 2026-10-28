@@ -217,6 +217,17 @@ def cmd_gateway(args: argparse.Namespace) -> int:
 
 def cmd_lsp(args: argparse.Namespace) -> int:
     """Start the language server. Imported lazily: pygls is an optional extra."""
+    if args.check:
+        # For an editor extension deciding whether this command is usable, without starting a
+        # server it would then have to stop: exit 0 if one could start, 1 if the extra is missing.
+        try:
+            import lsprotocol  # noqa: F401
+            import pygls  # noqa: F401
+        except ImportError:
+            print("the language server needs pygls: pip install 'kelvra[lsp]'", file=sys.stderr)
+            return EXIT_FINDINGS
+        print("the language server can start")
+        return EXIT_OK
     from .lsp import serve
 
     return serve()
@@ -274,6 +285,11 @@ def build_parser() -> argparse.ArgumentParser:
             "Speaks the Language Server Protocol on stdin/stdout. Editors launch "
             "this; you rarely run it by hand. Needs: pip install 'kelvra[lsp]'"
         ),
+    )
+    lsp.add_argument(
+        "--check",
+        action="store_true",
+        help="exit 0 if the server could start (the 'lsp' extra is installed), 1 if not",
     )
     lsp.set_defaults(func=cmd_lsp)
 

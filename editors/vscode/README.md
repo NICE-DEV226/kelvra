@@ -1,41 +1,59 @@
 # Kelvra policy files in VS Code
 
-Syntax highlighting for `.klv`. **Highlighting only.** This extension does not parse anything, so a
-file full of nonsense still colours perfectly; the parser and the checks live in `kelvra check`, and
-the same checks are available as editor diagnostics through the language server below.
+Colouring, suggestions, hover, go to definition, rename and diagnostics for `.klv` policy files.
 
-## Diagnostics, hover, symbols and completion
+It has two layers, and the first needs nothing else:
 
-`kelvra lsp` is a language server for `.klv` over stdio (install with `pip install "kelvra[lsp]"`). It
-publishes the parser's errors and the analysis findings with their line, and offers hover, document
-symbols and completion. **This extension does not start it.** To use it, point your editor's generic
-language-server client at the command `kelvra lsp` for files with the `klv` language id. That wiring has
-not been tried with any particular editor here; what is tested is the protocol exchange itself
-(`tests/test_lsp.py`).
+1. **Declared in the extension, no server:** syntax colouring, snippets, whole-name word selection
+   (`inbox.imap` is one word), indentation, folding by block, coloured parentheses, a file icon.
+2. **From the language server `kelvra lsp`**, which this extension starts for you: errors and
+   findings from the parser and the analysis as you type, hover that says who can reach a sink,
+   the document outline, suggestions that depend on where the cursor is (after `integrity`,
+   `accepts`, `requires`, `from`, `to`, `for`, `audit`; inside a `source`, `sink` or `declassify`
+   block only the clauses valid there; whole blocks at the margin, with drop-downs of the
+   principals and purposes you declared), go to definition, find all references, rename a principal
+   or a purpose everywhere, highlight its occurrences, and a quick fix that declares a missing
+   principal.
 
-## Trying it without installing
+Colouring does not validate anything: a file full of nonsense still colours. The server is what
+checks, and `kelvra check` does the same from a terminal or CI.
 
-From the repository root:
+## Installing it
+
+The server is a Python program; the extension finds it. From the repository root:
 
 ```bash
-code --extensionDevelopmentPath=./editors/vscode examples/support_agent/policy.klv
+pip install -e ".[lsp]"                  # the language server (or: pip install "kelvra[lsp]")
+cd editors/vscode && npm install --omit=dev    # the one dependency, vscode-languageclient
 ```
 
-That opens a second VS Code window with the grammar loaded.
-
-## Installing it locally
-
-Symlink or copy the directory into your extensions folder, then restart
-VS Code:
+then copy or symlink `editors/vscode` into your extensions folder and restart the editor:
 
 | Platform | Path |
 |---|---|
-| Linux / macOS | `~/.vscode/extensions/kelvra-klv` |
-| Windows | `%USERPROFILE%\.vscode\extensions\kelvra-klv` |
+| Linux (VS Code) | `~/.vscode/extensions/kelvra.kelvra-klv-0.1.0` |
+| Linux (Code - OSS) | `~/.vscode-oss/extensions/kelvra.kelvra-klv-0.1.0` |
+| macOS | `~/.vscode/extensions/kelvra.kelvra-klv-0.1.0` |
+| Windows | `%USERPROFILE%\.vscode\extensions\kelvra.kelvra-klv-0.1.0` |
 
-It is not on the Marketplace and will not be published until the syntax
-stops changing. Shipping a stable extension for an unstable grammar teaches
-people a syntax that is about to move.
+Or try it without installing: `code --extensionDevelopmentPath=./editors/vscode examples/support_agent/policy.klv`.
+
+It looks for the server in this order and uses the first that answers `kelvra lsp --check`: the
+`kelvra.server.command` setting, `~/.local/share/kelvra/venv/bin/kelvra`, `kelvra` on the PATH,
+`python3 -m kelvra.cli`. If none does, it says so once, with the command to run, and the colouring
+and snippets keep working. Settings: `kelvra.server.enabled`, `kelvra.server.command`,
+`kelvra.diagnostics.delayMs`. Commands: *Kelvra: Restart the language server*, *Kelvra: Show the
+language server log*.
+
+It is not on the Marketplace and will not be published until the syntax stops changing. Shipping
+a stable extension for an unstable grammar teaches people a syntax that is about to move.
+
+What was tested, and what was not: the logic of each feature and a real server over the protocol
+(`tests/test_editing.py`, `tests/test_lsp_features.py`); how this extension chooses and starts
+the server, with doubles for VS Code (`tests/test_vscode_extension.py`); the colours against
+VS Code's own engine (`tests/test_klv_highlighting.py`). **Not tested automatically: how it looks
+and behaves inside an editor.** Open `examples/support_agent/policy.klv` and try: hover a sink,
+press F12 on a principal, F2 to rename it, type a new `sink` and press Tab.
 
 ## What the colours mean
 

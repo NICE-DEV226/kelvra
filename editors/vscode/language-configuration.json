@@ -34,9 +34,16 @@
     }
   ],
   "folding": {
+    "offSide": true,
     "markers": {
       "start": "^# -{10,}",
       "end": "^\\s*$"
     }
-  }
+  },
+  "colorizedBracketPairs": [
+    [
+      "(",
+      ")"
+    ]
+  ]
 }

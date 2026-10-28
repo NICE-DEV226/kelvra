@@ -229,3 +229,27 @@ def test_an_unknown_subcommand_is_a_usage_error():
 
 def test_check_without_a_file_is_a_usage_error():
     assert run("check") == EXIT_USAGE
+
+
+# -- lsp --check ----------------------------------------------------------------------------------
+
+
+def test_lsp_check_says_whether_the_server_could_start_without_starting_it(capsys):
+    pytest.importorskip("pygls")
+    assert run("lsp", "--check") == EXIT_OK
+    assert "can start" in capsys.readouterr().out
+
+
+def test_lsp_check_names_the_missing_extra_and_exits_nonzero(capsys, monkeypatch):
+    import builtins
+
+    real = builtins.__import__
+
+    def without_pygls(name, *args, **kwargs):
+        if name.split(".")[0] in ("pygls", "lsprotocol"):
+            raise ImportError(name)
+        return real(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", without_pygls)
+    assert run("lsp", "--check") == EXIT_FINDINGS
+    assert "pip install 'kelvra[lsp]'" in capsys.readouterr().err
