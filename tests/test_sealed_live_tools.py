@@ -86,6 +86,11 @@ class Chat(BaseHTTPRequestHandler):
         prompt = body["messages"][1]["content"]
         tokens = live.tokens_in(prompt)
         text = f"{tokens['name']} {tokens['iban']} {tokens['phone']}"
+        if cls.mode == "repeat":  # says everything twice, as some models do, and one token wrongly
+            wrong = tokens["iban"][:-1] + ("A" if tokens["iban"][-1] != "A" else "B")
+            text = f"{text} / {text} / {wrong} / {wrong}"
+        if cls.mode == "invent":
+            text = f"{text} kelvra-seal.v1.other.00000000.e30.AAAAAAAAAAAAAAAAAAAAAAAA"
         if cls.mode == "partial":  # uses only the name token, as a model does when asked nothing
             text = tokens["name"]
         if cls.mode == "truncate":
@@ -616,3 +621,57 @@ def test_a_success_resets_the_count_of_failures_in_a_row(server, capsys, tmp_pat
     [raw] = json.loads(out.read_text(encoding="utf-8"))["raw"]
     assert [t["outcome"] for t in raw["trials"]] == ["api_error", "ok", "api_error", "ok"]
     assert "stopping" not in capsys.readouterr().out
+
+
+def test_a_model_that_repeats_tokens_cannot_push_a_rate_past_a_hundred_percent(
+    server, capsys, tmp_path
+):
+    """This crashed the first run: counting every occurrence made used/sent exceed 1."""
+    server.mode = "repeat"
+    out = tmp_path / "r.json"
+    assert run("--trials", "3", "--scenario", "honest", "--out", str(out)) == 0
+    [s] = summaries(capsys, out)
+    assert s["tokens_used"].startswith("100% (9/9")  # three kinds, three trials; repeats count once
+    # every field's real token is present, so each counts as exactly copied; the second, wrong
+    # spelling of the iban token is counted apart, and it makes the whole reply refused
+    assert s["token_copy"].startswith("100% (9/9")
+    assert s["reply_complete"].startswith("0% (0/3")
+    raw = json.loads(out.read_text(encoding="utf-8"))["raw"][0]["trials"]
+    assert all(t["tokens_copied_exactly"] == 3 and t["tokens_altered"] == 0 for t in raw)
+    assert all(t["tokens_other"] == 1 for t in raw)
+
+
+def test_a_token_that_belongs_to_no_field_is_counted_apart_not_as_a_wrong_copy(
+    server, capsys, tmp_path
+):
+    server.mode = "invent"
+    out = tmp_path / "r.json"
+    run("--trials", "2", "--scenario", "honest", "--out", str(out))
+    [s] = summaries(capsys, out)
+    raw = json.loads(out.read_text(encoding="utf-8"))["raw"][0]["trials"]
+    assert s["token_copy"].startswith("100% (6/6") and s["tokens_used"].startswith("100% (6/6")
+    assert all(t["tokens_other"] == 1 and t["tokens_altered"] == 0 for t in raw)
+
+
+def test_a_proportion_that_is_not_one_is_refused_loudly_not_computed():
+    for successes, total in ((5, 3), (-1, 3), (1, 0)):
+        with pytest.raises(ValueError, match="not a proportion"):
+            live.wilson(successes, total)
+    assert live.wilson(0, 0) == (0.0, 1.0)
+
+
+def test_results_are_written_after_every_scenario_so_a_stop_loses_at_most_one(
+    server, capsys, tmp_path, monkeypatch
+):
+    out = tmp_path / "r.json"
+    seen = []
+    real = live.write_results
+
+    def spy(path, data, corpus, summaries, raw):
+        seen.append(len(summaries))
+        real(path, data, corpus, summaries, raw)
+
+    monkeypatch.setattr(live, "write_results", spy)
+    run("--trials", "2", "--out", str(out))  # simulated data: two scenarios
+    assert seen == [1, 2, 2]  # after each scenario, then once more at the end
+    assert len(json.loads(out.read_text(encoding="utf-8"))["summaries"]) == 2
