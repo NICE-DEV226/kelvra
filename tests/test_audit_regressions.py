@@ -157,8 +157,7 @@ def test_T_PARSE_04_second_consent_requirement_is_not_silently_dropped():
     ATTACK/AUTHOR two consent requirements on one sink.
     EXPECT either rejected, or both enforced; NOT only the last kept silently."""
     text = (
-        BASE
-        + "sink two\n    accepts confidential(a)\n"
+        BASE + "sink two\n    accepts confidential(a)\n"
         "    requires consent(a)\n    requires consent(b)\n"
     )
     # Sink holds a single `requires_consent_from: str | None`, so a second requirement can only
@@ -500,9 +499,7 @@ def test_T_RT_03_label_cannot_be_forged_by_constructing_tainted():
 
 def test_T_RT_03b_a_value_from_another_session_is_refused():
     """A label cannot be carried in from a session that is not this one."""
-    pol = parse(
-        "policy P\nprincipal a\nsource s\n    public\nsink pub\n    accepts public\n"
-    )
+    pol = parse("policy P\nprincipal a\nsource s\n    public\nsink pub\n    accepts public\n")
     other = Kelvra(pol).read("s", "x")
     with pytest.raises(TypeError):
         Kelvra(pol).emit("pub", other)
@@ -541,11 +538,10 @@ def test_T_RT_06_consent_event_binds_the_labels_of_the_data():
     """PROP  labels.md §8 + threat-model P5: consent 'recorded alongside the labels of the data
     involved'.  EXPECT the consent event carries a label."""
     src = (
-        BASE
-        + "sink needs_consent\n    accepts public\n"
+        BASE + "sink needs_consent\n    accepts public\n"
         "    requires consent(a)\nsource pubsrc\n    public\n"
     )
-    k = _rt(consent=approved_by('dr-test'), src=src)
+    k = _rt(consent=approved_by("dr-test"), src=src)
     k.emit("needs_consent", k.read("pubsrc", "x"))
     ev = next(e for e in k.record()["events"] if e["kind"] == "consent")
     assert "label" in ev
@@ -556,11 +552,10 @@ def test_T_RT_07_consent_granted_by_is_not_just_the_requested_principal():
     principal whose consent was required'.  The provider API returns only a bool, so this can
     never be anything but the principal.  EXPECT the provider able to supply an identity."""
     src = (
-        BASE
-        + "sink needs_consent\n    accepts public\n"
+        BASE + "sink needs_consent\n    accepts public\n"
         "    requires consent(a)\nsource pubsrc\n    public\n"
     )
-    k = _rt(consent=approved_by('dr-test'), src=src)
+    k = _rt(consent=approved_by("dr-test"), src=src)
     k.emit("needs_consent", k.read("pubsrc", "x"))
     ev = next(e for e in k.record()["events"] if e["kind"] == "consent")
     assert ev["granted_by"] == "dr-test" and ev["granted_by"] != ev["principal"]
@@ -600,7 +595,7 @@ def test_T_RT_10_model_call_consent_is_requested_once_per_call_not_per_input():
     ATTACK n/a.  EXPECT one consent prompt for a 3-input call (observed: 3)."""
     src = BASE + "sink llm\n    accepts confidential(a)\n    requires consent(a)\n"
     asked = []
-    k = _rt(consent=lambda p, c: asked.append(c) or ConsentDecision(True, 'dr-test'), src=src)
+    k = _rt(consent=lambda p, c: asked.append(c) or ConsentDecision(True, "dr-test"), src=src)
     ins = [k.read("s_untrusted", i) for i in range(3)]
     k.model_call("agent", *ins, via="llm")
     assert len(asked) == 1
@@ -775,8 +770,7 @@ def test_T_RT_21_agent_surface_cannot_launder_untrusted_data():
     endorse hostile content itself before emitting to the privileged sink.
     EXPECT the session exposes no privileged operation, and the privileged sink denies."""
     src = (
-        BASE
-        + "endorse human_review\n    from untrusted\n"
+        BASE + "endorse human_review\n    from untrusted\n"
         "    to endorsed(rev)\n    requires consent(rev)\n"
     )
     k = Kelvra(parse(src))  # default consent provider = deny all
@@ -805,8 +799,7 @@ def test_T_AN_05_analysis_rejects_consentless_public_declassification():
 
 def test_T_AN_06_guarded_endorser_is_accepted():
     src = (
-        BASE
-        + "endorse human_review\n    from untrusted\n"
+        BASE + "endorse human_review\n    from untrusted\n"
         "    to endorsed(rev)\n    requires consent(rev)\n"
     )
     assert not [f for f in analyse(parse(src)) if f.severity == "error"]

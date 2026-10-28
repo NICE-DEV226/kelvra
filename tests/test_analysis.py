@@ -132,9 +132,7 @@ def test_requiring_consent_also_removes_the_exposure():
     """A human in the way is a defence even without an endorser."""
     p = Policy(name="Consented")
     p.add_source(Source("web", Label.public().untrusted()))
-    p.add_sink(
-        Sink("shell.exec", audience=PrincipalSet.all(), requires_consent_from="operator")
-    )
+    p.add_sink(Sink("shell.exec", audience=PrincipalSet.all(), requires_consent_from="operator"))
     assert "untrusted-reaches-sink" not in codes(p)
 
 

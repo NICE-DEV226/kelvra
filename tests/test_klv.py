@@ -139,22 +139,26 @@ def test_comments_and_blank_lines_are_ignored_anywhere():
 
 
 def test_indent_width_is_not_prescribed():
-    two = parse(klv("""
+    two = parse(
+        klv("""
         policy W
         principal a
         source s
           confidential(a)
         sink o
           accepts public
-        """))
-    eight = parse(klv("""
+        """)
+    )
+    eight = parse(
+        klv("""
         policy W
         principal a
         source s
                 confidential(a)
         sink o
                 accepts public
-        """))
+        """)
+    )
     assert two.fingerprint() == eight.fingerprint()
 
 

@@ -179,9 +179,7 @@ def test_hovering_a_sink_warns_when_untrusted_data_reaches_it():
 
 
 def test_hovering_a_source_says_its_labels_are_unverified(example_text):
-    line = next(
-        n for n, t in enumerate(example_text.splitlines(), 1) if "source inbox.imap" in t
-    )
+    line = next(n for n, t in enumerate(example_text.splitlines(), 1) if "source inbox.imap" in t)
     markdown = hover_at(example_text, line, 8)
     assert "untrusted" in markdown
     assert "declarative and unverified" in markdown

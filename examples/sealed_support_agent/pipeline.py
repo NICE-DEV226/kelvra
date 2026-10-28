@@ -91,10 +91,21 @@ def build_prompt(message: str, tokens: dict[str, str]) -> str:
     )
 
 
+def _unfenced(reply: str) -> str:
+    """Real models often wrap JSON in a Markdown code fence. Take it off; change nothing else."""
+    text = reply.strip()
+    if text.startswith("```") and text.endswith("```") and len(text) >= 6:
+        inner = text[3:-3]
+        first, _, rest = inner.partition("\n")
+        if first.strip().isalpha() or not first.strip():
+            return rest if rest else inner
+    return reply
+
+
 def parse_actions(reply: str) -> list[dict]:
     """The model's answer as a list of ``{"to", "text"}``; plain text goes to the customer."""
     try:
-        data = json.loads(reply)
+        data = json.loads(_unfenced(reply))
     except ValueError:
         return [{"to": "mail.customer", "text": reply}]
     items = data if isinstance(data, list) else [data]
