@@ -36,7 +36,6 @@ import os
 import random
 import re
 import sys
-import time
 from collections import Counter
 from pathlib import Path
 
@@ -45,7 +44,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from corpus import Corpus, CorpusError
 from corpus import load as load_corpus
-from models import HttpChatModel, tokens_in
+from models import HttpChatModel, QuotaExhausted, Retrying, tokens_in
 from pipeline import Case, Pipeline
 from providers import PRESETS, EnvFileError, list_models, load_env_file
 from simulation import ticket
@@ -54,7 +53,6 @@ from kelvra import MasterKey
 
 HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parents[1]
-RETRIES = 3
 
 
 def synthetic_case(
@@ -84,50 +82,6 @@ def pct(successes: int, total: int) -> str:
     low, high = wilson(successes, total)
     rate = f"{100 * successes / total:.0f}%"
     return f"{rate} ({successes}/{total}, 95% CI {100 * low:.0f}-{100 * high:.0f}%)"
-
-
-class QuotaExhausted(RuntimeError):
-    """The key's allowance is used up. Waiting a few seconds will not help, so nothing retries."""
-
-
-def wait_from_message(message: str) -> float | None:
-    """How long the provider says to wait ("Please try again in 7.5s", "in 250ms", "in 1m3s")."""
-    found = re.search(r"try again in (?:(\d+)m)?\s*([0-9.]+)\s*(ms|s)", message, re.IGNORECASE)
-    if not found:
-        return None
-    minutes, number, unit = found.groups()
-    seconds = float(number) / (1000 if unit.lower() == "ms" else 1)
-    return seconds + 60 * int(minutes or 0)
-
-
-class Retrying:
-    """Wraps a model: retry a rate limit or a server error a few times, then give up.
-
-    A rate limit that names its own delay is waited out (up to a minute and a half); a quota that
-    is exhausted is not retried at all, because a pause cannot fix it.
-    """
-
-    def __init__(self, model: HttpChatModel, delay: float) -> None:
-        self.model, self.delay = model, delay
-
-    def complete(self, prompt: str) -> str:
-        for attempt in range(RETRIES + 1):
-            try:
-                reply = self.model.complete(prompt)
-                time.sleep(self.delay)
-                return reply
-            except RuntimeError as error:
-                message = str(error)
-                if "HTTP 429" in message and re.search(
-                    r"exceeded your current quota", message, re.I
-                ):
-                    raise QuotaExhausted(message) from None
-                transient = any(f"HTTP {c}" in message for c in (408, 429, 500, 502, 503, 504))
-                if not transient or attempt == RETRIES:
-                    raise
-                named = wait_from_message(message)
-                time.sleep(min(90.0, named + 0.5) if named is not None else 2.0 * 2**attempt)
-        raise AssertionError("unreachable")
 
 
 def one_trial(

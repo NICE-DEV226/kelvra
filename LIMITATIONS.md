@@ -77,8 +77,10 @@ record cut into segments, which is not built.
   joined label; there is no separate event.
 - **resist side channels,** or guarantee that a key leaves no copy in memory.
 - **replace external review.** The construction is a composition of standard primitives, tested and
-  reviewed by its author, not formally analysed or audited. It has not been run against a live
-  provider.
+  reviewed by its author, not formally analysed or audited. It has been run against real models
+  (Gemini and Groq's; [measurements and their limits](spec/sealing-verification.md)): nothing leaked in any of
+  the 147 valid trials, but how often a model copies a token back exactly, and so how often a reply gets
+  through, varies a lot by model and the samples are small.
 
 ## Unvalidated assumptions
 

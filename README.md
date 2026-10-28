@@ -263,8 +263,10 @@ policy, the kind and the label so a token cannot be relabelled or moved. Nothing
 [threat model](spec/sealing-threat-model.md).
 
 What it is **not**: the model cannot compute on a sealed value, only carry it. Code running in the
-same process can reach the key. There is no key rotation yet, and it has not been run against a live
-provider. [LIMITATIONS.md](LIMITATIONS.md#what-sealing-does-not-do) lists the rest.
+same process can reach the key. There is no key rotation yet. It has been run against real models from Gemini and Groq: no leak in 147
+valid trials, but whether a reply gets through depends on the model copying a token exactly (from 100% to
+about 10% of replies, small samples, one day; [the numbers](spec/sealing-verification.md)).
+[LIMITATIONS.md](LIMITATIONS.md#what-sealing-does-not-do) lists the rest.
 
 ## Prior art
 

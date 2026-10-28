@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 
@@ -83,8 +84,9 @@ class HttpChatModel:
 
     The API key is read from the environment variable named by ``key_env`` when a request is
     made, sent in the Authorization header, and never stored on the object, written to a log,
-    or put in an error message. Nothing here is verified against a live provider by the test
-    suite: the tests check the request this class builds, against a local server.
+    or put in an error message. The test suite checks the request this class builds against a local
+    server; measurements against real providers are separate (live_check.py, and
+    spec/sealing-verification.md section 5).
     """
 
     def __init__(
@@ -167,3 +169,47 @@ class HttpChatModel:
             return payload["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError):
             raise RuntimeError("the model endpoint answered in an unexpected shape") from None
+
+
+class QuotaExhausted(RuntimeError):
+    """The key's allowance is used up. Waiting a few seconds will not help, so nothing retries."""
+
+
+def wait_from_message(message: str) -> float | None:
+    """How long the provider says to wait ("Please try again in 7.5s", "in 250ms", "in 1m3s")."""
+    found = re.search(r"try again in (?:(\d+)m)?\s*([0-9.]+)\s*(ms|s)", message, re.IGNORECASE)
+    if not found:
+        return None
+    minutes, number, unit = found.groups()
+    seconds = float(number) / (1000 if unit.lower() == "ms" else 1)
+    return seconds + 60 * int(minutes or 0)
+
+
+class Retrying:
+    """Wraps a model: retry a rate limit or a server error a few times, then give up.
+
+    A rate limit that names its own delay is waited out (up to a minute and a half); a quota that
+    is exhausted is not retried at all, because a pause cannot fix it.
+    """
+
+    def __init__(self, model: HttpChatModel, delay: float = 0.0, retries: int = 3) -> None:
+        self.model, self.delay, self.retries = model, delay, retries
+
+    def complete(self, prompt: str) -> str:
+        for attempt in range(self.retries + 1):
+            try:
+                reply = self.model.complete(prompt)
+                time.sleep(self.delay)
+                return reply
+            except RuntimeError as error:
+                message = str(error)
+                if "HTTP 429" in message and re.search(
+                    r"exceeded your current quota", message, re.I
+                ):
+                    raise QuotaExhausted(message) from None
+                transient = any(f"HTTP {c}" in message for c in (408, 429, 500, 502, 503, 504))
+                if not transient or attempt == self.retries:
+                    raise
+                named = wait_from_message(message)
+                time.sleep(min(90.0, named + 0.5) if named is not None else 2.0 * 2**attempt)
+        raise AssertionError("unreachable")

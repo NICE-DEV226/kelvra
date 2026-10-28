@@ -105,6 +105,34 @@ def load_env_file(path: str | os.PathLike[str], repo_root: Path | None = None) -
     return loaded
 
 
+class ProviderError(Exception):
+    """The provider cannot be used as asked; the message says what to do."""
+
+
+def resolve(
+    provider: str,
+    llm_model: str | None,
+    env_file: str | os.PathLike[str] | None,
+    repo_root: Path | None = None,
+) -> tuple[Preset, str]:
+    """The preset and the name of the variable holding its key, or a :class:`ProviderError`."""
+    if not llm_model:
+        raise ProviderError(
+            "give the model's name with --llm-model (names change; list them with "
+            "live_check.py --list-models)"
+        )
+    preset = PRESETS[provider]
+    if env_file:
+        try:
+            load_env_file(env_file, repo_root)
+        except EnvFileError as error:
+            raise ProviderError(str(error)) from None
+    key_env = preset.key_env()
+    if not os.environ.get(key_env):
+        raise ProviderError(f"set ${key_env} (or pass --env-file) to use {provider}")
+    return preset, key_env
+
+
 def list_models(base_url: str, key_env: str, timeout: float = 30.0) -> list[str]:
     """The model ids an endpoint offers. Ids only: nothing else of the response is kept."""
     key = os.environ.get(key_env)

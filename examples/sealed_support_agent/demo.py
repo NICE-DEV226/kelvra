@@ -5,11 +5,14 @@ Run it (offline, deterministic apart from random nonces):
     pip install -e ".[seal]"
     python examples/sealed_support_agent/demo.py
 
-With a real model behind an OpenAI-compatible endpoint (you supply the key; nothing is
-stored, and the prompt it receives contains no plaintext account detail either way):
+With a real model (you supply the key, in the environment or a file outside the repository;
+nothing is stored, and the prompt it receives contains no plaintext account detail either way):
 
-    export OPENAI_API_KEY=...        # yours; never put it in a file
-    python examples/sealed_support_agent/demo.py --model http
+    python examples/sealed_support_agent/demo.py --provider groq --llm-model <model> \\
+        --env-file ~/.config/kelvra/keys.env
+
+A real model decides for itself what to do with the message and the tokens: the lines "asked"
+below are then its own, not a script's. Providers: gemini, groq, xai, openai.
 
 What it shows, in order: what the provider receives, what the model asks for, what the
 boundary does with each request, and what an auditor can check afterwards.
@@ -26,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from models import HonestModel, HttpChatModel, InjectedModel
 from pipeline import INJECTED, LEGIT, Case, Pipeline, Result
+from providers import PRESETS, ProviderError, resolve
 
 WIDTH = 78
 
@@ -79,31 +83,44 @@ def audit(result: Result) -> None:
 
 
 def build_model(args: argparse.Namespace, scripted):
-    if args.model == "http":
-        return HttpChatModel(base_url=args.base_url, model=args.llm_model, key_env=args.key_env)
-    return scripted
+    if not args.provider:
+        return scripted
+    preset, key_env = resolve(
+        args.provider, args.llm_model, args.env_file, Path(__file__).resolve().parents[2]
+    )
+    return HttpChatModel(preset.base_url, args.llm_model, key_env, timeout=120.0, temperature=None)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--model", choices=("scripted", "http"), default="scripted")
-    parser.add_argument("--base-url", default="https://api.openai.com/v1")
-    parser.add_argument("--llm-model", default="gpt-4o-mini")
-    parser.add_argument("--key-env", default="OPENAI_API_KEY")
+    parser.add_argument(
+        "--provider", choices=sorted(PRESETS), help="use a real model (needs a key)"
+    )
+    parser.add_argument("--llm-model", help="the model's name at that provider")
+    parser.add_argument("--env-file", type=Path, help="NAME=value lines, outside the repository")
     parser.add_argument("--only", choices=("legit", "injection"))
     args = parser.parse_args()
 
     runs = []
-    if args.only in (None, "legit"):
-        runs.append(("1. A normal request", LEGIT, build_model(args, HonestModel())))
-    if args.only in (None, "injection"):
-        runs.append(
-            (
-                "2. The same agent, after an injection in the message",
-                INJECTED,
-                build_model(args, InjectedModel()),
+    try:
+        if args.only in (None, "legit"):
+            runs.append(("1. A normal request", LEGIT, build_model(args, HonestModel())))
+        if args.only in (None, "injection"):
+            runs.append(
+                (
+                    "2. The same agent, after an injection in the message",
+                    INJECTED,
+                    build_model(args, InjectedModel()),
+                )
             )
-        )
+    except ProviderError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
+    print(
+        f"model: {args.llm_model} via {args.provider} (a real model; what it asks for is its own)"
+        if args.provider
+        else "model: scripted (offline; it does what each case says, to show the boundary)"
+    )
 
     result = None
     for title, case, model in runs:

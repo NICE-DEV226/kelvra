@@ -73,5 +73,9 @@ pre { background: var(--code); border: 1px solid var(--line); border-radius: 8px
 .tok-number { color: #79c0ff; }
 .tok-punctuation { color: #8b949e; }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; }
+.banner { margin: 0 0 20px; padding: 10px 12px; border-radius: 8px; font-size: .92rem;
+  border: 1px solid var(--line); background: var(--panel); }
+.banner.live { border-color: var(--accent); }
+.banner.scripted { color: var(--muted); }
 @media (prefers-reduced-motion: no-preference) { .attempts li { animation: in .2s ease-out; } }
 @keyframes in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }

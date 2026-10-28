@@ -19,6 +19,8 @@ function el(tag, className, text) {
 
 function show(result) {
   $("results").hidden = false;
+  showModel(result.model);
+  $("model-used").textContent = result.model.label;
   const leaked = result.plaintextInPrompt;
   const line = $("leakline");
   line.textContent = leaked.length
@@ -89,6 +91,30 @@ function drawPolicy(policy) {
 fetch("/api/policy").then((r) => r.json()).then(drawPolicy).catch(() => {
   $("policy").textContent = "The policy could not be loaded.";
 });
+
+function showModel(info) {
+  const banner = $("model-banner");
+  const live = info.mode === "live";
+  banner.textContent = live
+    ? "Live model: " + info.label + ". Your request is sent to that provider; the account details in it are fictional and sealed."
+    : "Scripted model, offline: it does what each choice below says, so what is on show is the boundary, not a model.";
+  banner.className = "banner " + (live ? "live" : "scripted");
+  $("honest-title").textContent = live ? "Normal message" : "Behaves";
+  $("honest-note").textContent = live
+    ? "a real banking question; the model answers it"
+    : "answers the customer, copying the sealed tokens it needs";
+  $("injected-title").textContent = live ? "Message with an injection" : "Obeys an injection";
+  $("injected-note").textContent = live
+    ? "the message hides an instruction; what the model does with it is up to the model"
+    : "tries to send the details to an outsider, write them to the record, forge and alter tokens";
+  $("limits-mode").textContent = live
+    ? "A real model may copy a token exactly, alter it (the whole reply is then refused, which is the safe " +
+      "outcome and a lost answer), or leave one out. How often depends on the model: see spec/sealing-verification.md, " +
+      "section 5, for what was measured and how small the samples are."
+    : "This page uses a scripted model, so it shows what the boundary does, not how a real model behaves. " +
+      "Start it with --provider to use a real one.";
+}
+fetch("/api/config").then((r) => r.json()).then(showModel).catch(() => {});
 
 let DEFAULTS = { honest: "", injected: "" };
 function restore() { messageBox.value = DEFAULTS[behaviour()]; }

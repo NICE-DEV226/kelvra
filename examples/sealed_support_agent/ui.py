@@ -1,6 +1,12 @@
 """A page on the loopback interface that runs the real pipeline and shows what happened.
 
-    python examples/sealed_support_agent/ui.py          # then open the address it prints
+    python examples/sealed_support_agent/ui.py          # scripted model, offline
+    python examples/sealed_support_agent/ui.py --provider groq --llm-model <model> \\
+        --env-file ~/.config/kelvra/keys.env             # a real model; it says so on the page
+
+Then open the address it prints. With a real model the page names it, and what the model does is
+its own: it may copy a token exactly, alter one (the reply is then refused whole), or do what the
+customer's message tells it. The account details are fictional in both modes.
 
 The page decides nothing. Each button posts to ``/api/run``, the server runs
 ``pipeline.Pipeline`` (the same code the terminal demo and the tests run) and sends back what
@@ -29,8 +35,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "editors"))
 
 import highlight
-from models import HonestModel, HttpChatModel, InjectedModel
+from models import HonestModel, HttpChatModel, InjectedModel, Retrying
 from pipeline import INJECTED, LEGIT, POLICY_FILE, Case, Pipeline
+from providers import PRESETS, ProviderError, resolve
 
 ASSETS = Path(__file__).with_name("ui")
 MAX_BODY = 8 * 1024
@@ -69,7 +76,10 @@ def default_message(behaviour: str) -> str:
     return (INJECTED if behaviour == "injected" else LEGIT).message
 
 
-def run_case(behaviour: str, message: str, model_factory) -> dict:
+SCRIPTED_INFO = {"mode": "scripted", "label": "scripted model (offline)"}
+
+
+def run_case(behaviour: str, message: str, model_factory, info: dict | None = None) -> dict:
     scripted = InjectedModel() if behaviour == "injected" else HonestModel()
     model = model_factory(scripted)
     base = INJECTED if behaviour == "injected" else LEGIT
@@ -91,10 +101,11 @@ def run_case(behaviour: str, message: str, model_factory) -> dict:
         "report": result.report,
         "summary": result.record["summary"],
         "verified": result.verified,
+        "model": info or SCRIPTED_INFO,
     }
 
 
-def make_handler(model_factory):
+def make_handler(model_factory, info: dict | None = None):
     class Handler(BaseHTTPRequestHandler):
         server_version = "SealedDemo"
         sys_version = ""
@@ -128,6 +139,8 @@ def make_handler(model_factory):
         def do_GET(self):
             if not self._host_ok():
                 return self._json(403, {"error": "unexpected Host header"})
+            if self.path == "/api/config":
+                return self._json(200, info or SCRIPTED_INFO)
             if self.path == "/api/policy":
                 return self._json(200, policy_payload())
             if self.path == "/api/defaults":
@@ -167,7 +180,7 @@ def make_handler(model_factory):
             if not isinstance(message, str) or len(message) > MAX_MESSAGE:
                 return self._json(400, {"error": f"message is text of at most {MAX_MESSAGE}"})
             try:
-                payload = run_case(behaviour, message, model_factory)
+                payload = run_case(behaviour, message, model_factory, info)
             except RuntimeError as error:  # a model endpoint problem; never carries a key
                 return self._json(502, {"error": str(error)})
             return self._json(200, payload)
@@ -175,30 +188,54 @@ def make_handler(model_factory):
     return Handler
 
 
-def make_server(host: str = "127.0.0.1", port: int = 0, model_factory=lambda scripted: scripted):
+def make_server(
+    host: str = "127.0.0.1",
+    port: int = 0,
+    model_factory=lambda scripted: scripted,
+    info: dict | None = None,
+):
     """A server bound to a loopback address. Anything else is refused, not warned about."""
     if not ipaddress.ip_address(host).is_loopback:
         raise ValueError("this page runs a demonstration; it listens on a loopback address only")
-    return ThreadingHTTPServer((host, port), make_handler(model_factory))
+    return ThreadingHTTPServer((host, port), make_handler(model_factory, info))
+
+
+def build_model(args: argparse.Namespace):
+    """The model factory and the description the page shows, from the command line."""
+    if not args.provider:
+        return (lambda scripted: scripted), SCRIPTED_INFO
+    try:
+        preset, key_env = resolve(
+            args.provider, args.llm_model, args.env_file, Path(__file__).resolve().parents[2]
+        )
+    except ProviderError as error:
+        raise SystemExit(f"error: {error}") from None
+
+    def factory(_scripted):
+        # A busy provider answers 503 now and then: retry it as the measurements do.
+        return Retrying(
+            HttpChatModel(preset.base_url, args.llm_model, key_env, timeout=120.0, temperature=None)
+        )
+
+    return factory, {"mode": "live", "label": f"{args.llm_model} via {args.provider}"}
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--port", type=int, default=8765)
-    parser.add_argument("--model", choices=("scripted", "http"), default="scripted")
-    parser.add_argument("--base-url", default="https://api.openai.com/v1")
-    parser.add_argument("--llm-model", default="gpt-4o-mini")
-    parser.add_argument("--key-env", default="OPENAI_API_KEY")
+    parser.add_argument(
+        "--provider",
+        choices=sorted(PRESETS),
+        help="use a real model from this provider instead of the scripted one (needs a key)",
+    )
+    parser.add_argument("--llm-model", help="the model's name at that provider")
+    parser.add_argument("--env-file", type=Path, help="NAME=value lines, outside the repository")
     args = parser.parse_args()
 
-    factory = (
-        (lambda _scripted: HttpChatModel(args.base_url, args.llm_model, args.key_env))
-        if args.model == "http"
-        else (lambda scripted: scripted)
-    )
-    server = make_server("127.0.0.1", args.port, factory)
+    factory, info = build_model(args)
+    server = make_server("127.0.0.1", args.port, factory, info)
     host, port = server.server_address[:2]
-    print(f"Sealed support agent on http://{host}:{port}/  (Ctrl+C to stop)")
+    print(f"Sealed support agent on http://{host}:{port}/  ({info['label']}; Ctrl+C to stop)")
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:

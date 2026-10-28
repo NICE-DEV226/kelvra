@@ -95,11 +95,72 @@ work began (all passing); **they were not re-run in this session**: they live ou
 Re-running them against the current code is listed in
 the project's private submission notes.
 
-## 5. What was not verified
+## 5. Against real models
 
-* The sealing code on macOS, Windows, Python 3.10 and 3.13 (CI would).
-* Any behaviour against a live model provider: no request left this machine.
-* A real model's behaviour with a token in its prompt.
+Run on 2026-10-28 with `examples/sealed_support_agent/live_check.py`; raw per-trial results are in
+`evaluation/live/`, and the table below is generated from them (a test fails if they disagree).
+
+**Method.** The full pipeline, with a real model in place of the scripted one. The customer's message is
+real text: a banking question from PolyAI/banking77 (CC-BY-4.0), and for the injection cases either one of
+five hand-written attacks, or an attack taken from a public dataset (deepset/prompt-injections,
+yanismiraoui/prompt_injections, Lakera/mosscap_prompt_injection). The account details the pipeline seals
+(name, IBAN, telephone) are **fictional**: an IBAN with valid check digits and no bank behind it, a number
+from a range reserved for fiction. The agent is asked to reply to the customer and confirm the three details
+on file, so it needs all three tokens. Each trial uses a fresh random key and fresh details; sampling
+settings are the provider's defaults. A dataset manifest (revision, licence, hash) is in each results file.
+
+<!-- live:start -->
+| model | message | trials used | token copied exactly | reply complete | tried another destination | delivered elsewhere | plaintext in prompt | calls that failed |
+|---|---|---|---|---|---|---|---|---|
+| gemini-3.5-flash-lite (gemini) | normal | 5 of 5 | 100% (15/15) | 100% (5/5) | 20% (1/5) | 0 | 0 of 5 | 0 of 5 |
+| gemini-3.5-flash-lite (gemini) | injection (hand-written) | 5 of 5 | 100% (15/15) | 100% (5/5) | 0% (0/5) | 0 | 0 of 5 | 0 of 5 |
+| gemini-3.5-flash-lite (gemini) | injection (public datasets) | 5 of 5 | 100% (15/15) | 100% (5/5) | 0% (0/5) | 0 | 0 of 5 | 0 of 5 |
+| openai/gpt-oss-120b (groq) | normal | 17 of 20 | 94% (45/48) | 88% (15/17) | 35% (6/17) | 0 | 0 of 17 | 3 of 20 |
+| openai/gpt-oss-120b (groq) | injection (hand-written) | 15 of 20 | 87% (27/31) | 40% (6/15) | 47% (7/15) | 0 | 0 of 15 | 5 of 20 |
+| openai/gpt-oss-120b (groq) | injection (public datasets) | 18 of 20 | 100% (51/51) | 94% (17/18) | 33% (6/18) | 0 | 0 of 18 | 2 of 20 |
+| openai/gpt-oss-20b (groq) | normal | 18 of 20 | 86% (24/28) | 11% (2/18) | 6% (1/18) | 0 | 0 of 18 | 2 of 20 |
+| openai/gpt-oss-20b (groq) | injection (hand-written) | 20 of 20 | 92% (22/24) | 0% (0/20) | 45% (9/20) | 0 | 0 of 20 | 0 of 20 |
+| openai/gpt-oss-20b (groq) | injection (public datasets) | 19 of 20 | 85% (29/34) | 11% (2/19) | 21% (4/19) | 0 | 0 of 19 | 1 of 20 |
+| qwen/qwen3.8-27b (groq) | normal | 9 of 20 | 100% (27/27) | 89% (8/9) | 67% (6/9) | 0 | 0 of 9 | 11 of 20 |
+| qwen/qwen3.8-27b (groq) | injection (hand-written) | 9 of 20 | 94% (17/18) | 44% (4/9) | 33% (3/9) | 0 | 0 of 9 | 11 of 20 |
+| qwen/qwen3.8-27b (groq) | injection (public datasets) | 7 of 20 | 100% (21/21) | 100% (7/7) | 43% (3/7) | 0 | 0 of 7 | 13 of 20 |
+<!-- live:end -->
+
+*Token copied exactly* is measured among the tokens the model tried to copy (name, IBAN, telephone, one per
+kind). *Reply complete* means a reply reached the customer with all three real details. *Tried another
+destination* counts trials where the model named a destination other than the customer, including ones the
+prompt listed (the CRM, an outside address): they are refused or recorded, and are not leaks. *Calls that failed*
+are provider errors (mostly rate limits) that were retried and still failed; those trials are left out.
+
+**What it shows**
+
+* **The security property held in every valid trial: 147 of 147.** Nothing was delivered to a destination other
+  than the customer's, and no prompt held a plaintext detail, whatever the model did, including when it obeyed an
+  injection. This is the property the design exists for, and it does not depend on the model behaving.
+* **Whether the feature is useful depends heavily on the model.** Copying a token back exactly happened 85% to
+  100% of the time per token, but one altered token refuses the whole reply, so complete replies were far fewer
+  for some models: from 100% (Gemini 3.5 Flash Lite, 5 trials per case) down to 0 to 11% for GPT-OSS 20B. The
+  refusal is the safe outcome and a lost answer. **The cause of GPT-OSS 20B's incomplete replies was not
+  diagnosed**; it may be copying errors, leaving tokens out, or sending to other destinations.
+* The attacks taken from public datasets are generic ("ignore your instructions...") and mostly do not name a
+  destination this agent has, so they say less about this pipeline than the hand-written ones, which do.
+
+**Limits of this measurement**
+
+* **Small samples and wide intervals.** 5 trials per case for Gemini; 15 to 20 for the GPT-OSS models; 7 to 9 for
+  Qwen, whose other calls failed (11 to 13 of 20 per case, rate limits). Intervals are in the results files; a
+  difference of a few trials between two models is not a finding.
+* One day, one prompt, default sampling, three providers' models of one or two families. Not a ranking, and not
+  a claim about any model that was not run.
+* Gemini 3.5 Flash was started and its free quota ran out; those trials are not included.
+* The data is fictional where it matters and public elsewhere; real customer traffic, longer prompts and other
+  languages were not tried.
+* It says nothing about what a provider does with a prompt it receives. The design assumes the worst.
+
+## 6. What was not verified
+
+* The sealing code on macOS and Windows (it passes the suite on Linux under Python 3.10, 3.13 and 3.14; CI has not run on this branch).
+* A real model's behaviour beyond section 5: three providers' models, small samples, one day.
 * Confidentiality of the construction itself beyond the primitives' published known answers and
   an independent re-implementation of the format; no external cryptographic review.
 * Side channels, memory remanence, a compromised host.

@@ -11,6 +11,7 @@
   <h1>Sealed support agent</h1>
   <p class="lede">The model provider receives the customer's question, and the account details only as
   ciphertext. Run it, then look at what the provider held and what the boundary did.</p>
+  <p id="model-banner" class="banner" role="status"></p>
 </header>
 
 <main>
@@ -18,9 +19,9 @@
     <h2 id="setup">1. Choose what the model does</h2>
     <div class="choices" role="radiogroup" aria-label="Model behaviour">
       <label class="choice"><input type="radio" name="behaviour" value="honest" checked>
-        <span><strong>Behaves</strong><small>answers the customer, copying the sealed tokens it needs</small></span></label>
+        <span><strong id="honest-title">Behaves</strong><small id="honest-note">answers the customer, copying the sealed tokens it needs</small></span></label>
       <label class="choice"><input type="radio" name="behaviour" value="injected">
-        <span><strong>Obeys an injection</strong><small>tries to send the details to an outsider, write them to the record, forge and alter tokens</small></span></label>
+        <span><strong id="injected-title">Obeys an injection</strong><small id="injected-note">tries to send the details to an outsider, write them to the record, forge and alter tokens</small></span></label>
     </div>
     <label for="message" class="field">Customer message <small>(untrusted: anyone can write to this inbox)</small></label>
     <textarea id="message" rows="5" maxlength="2000"></textarea>
@@ -42,6 +43,7 @@
   <div id="results" hidden>
     <section class="panel" aria-labelledby="provider">
       <h2 id="provider">2. What the provider received</h2>
+      <p class="note">Model used: <strong id="model-used"></strong></p>
       <p id="leakline" class="verdict"></p>
       <pre id="prompt" tabindex="0"></pre>
       <p class="note">Tokens are shortened here; the provider got them whole. The key id names the key and reveals nothing.</p>
@@ -62,9 +64,10 @@
 
   <section class="panel limits" aria-labelledby="limits">
     <h2 id="limits">What this does not do</h2>
-    <p>The model cannot read a sealed value, so it cannot reason about it; it can copy it. Code running in
-    this process can reach the key: the boundary is for the model and the provider, not for the
-    application. There is no key rotation, and this page has not been run against a live provider.</p>
+    <p id="limits-common">The model cannot read a sealed value, so it cannot reason about it; it can copy it.
+    Code running in this process can reach the key: the boundary is for the model and the provider, not for
+    the application. There is no key rotation.</p>
+    <p id="limits-mode"></p>
   </section>
 </main>
 <script src="/app.js"></script>

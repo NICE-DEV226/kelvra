@@ -18,6 +18,7 @@ import os
 import re
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import ClassVar
@@ -126,7 +127,7 @@ def server(monkeypatch):
     url = f"http://127.0.0.1:{srv.server_address[1]}/v1"
     monkeypatch.setitem(providers.PRESETS, "local", providers.Preset(url, ("LOCAL_TEST_KEY",)))
     monkeypatch.setenv("LOCAL_TEST_KEY", SECRET_KEY)
-    monkeypatch.setattr(live.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(time, "sleep", lambda seconds: None)
     handler.url = url
     yield handler
     srv.shutdown()
@@ -567,14 +568,16 @@ def test_the_task_asks_the_model_to_confirm_the_details_so_that_tokens_are_neede
     ],
 )
 def test_the_wait_a_provider_asks_for_is_read_from_its_message(message, seconds):
-    assert live.wait_from_message(message) == seconds
+    import models as shared
+
+    assert shared.wait_from_message(message) == seconds
 
 
 def test_a_rate_limit_that_names_its_delay_is_waited_out_for_exactly_that_long(
     server, capsys, tmp_path, monkeypatch
 ):
     waits = []
-    monkeypatch.setattr(live.time, "sleep", waits.append)
+    monkeypatch.setattr(time, "sleep", waits.append)
     server.statuses[:] = [429, 200]
     server.error_message = "Rate limit reached. Please try again in 7.5s."
     run("--trials", "1", "--scenario", "honest", "--out", str(tmp_path / "r.json"))
@@ -675,3 +678,189 @@ def test_results_are_written_after_every_scenario_so_a_stop_loses_at_most_one(
     run("--trials", "2", "--out", str(out))  # simulated data: two scenarios
     assert seen == [1, 2, 2]  # after each scenario, then once more at the end
     assert len(json.loads(out.read_text(encoding="utf-8"))["summaries"]) == 2
+
+
+# -- the page and the demo with a real model ----------------------------------------------
+
+
+def test_a_provider_is_resolved_only_with_a_model_name_and_a_key(clean_env, monkeypatch, tmp_path):
+    with pytest.raises(providers.ProviderError, match="--llm-model"):
+        providers.resolve("groq", None, None)
+    with pytest.raises(providers.ProviderError, match=r"set \$GROQ_API_KEY"):
+        providers.resolve("groq", "some-model", None)
+    monkeypatch.setenv("GROQ_API_KEY", "gsk-fake")
+    preset, key_env = providers.resolve("groq", "some-model", None)
+    assert preset.base_url == "https://api.groq.com/openai/v1" and key_env == "GROQ_API_KEY"
+    path = keyfile(tmp_path, "GEMINI_API_KEY=gem-fake\n")
+    assert providers.resolve("gemini", "m", path)[1] == "GEMINI_API_KEY"
+    with pytest.raises(providers.ProviderError, match="inside the repository"):
+        providers.resolve("gemini", "m", path, repo_root=tmp_path)
+
+
+def test_the_page_describes_a_scripted_model_by_default_and_a_live_one_when_asked(
+    server, monkeypatch
+):
+    import argparse
+
+    import ui as page
+
+    factory, info = page.build_model(argparse.Namespace(provider=None))
+    assert info == {"mode": "scripted", "label": "scripted model (offline)"}
+    assert factory("scripted") == "scripted"
+    monkeypatch.setitem(
+        providers.PRESETS, "local", providers.Preset(server.url, ("LOCAL_TEST_KEY",))
+    )
+    args = argparse.Namespace(provider="local", llm_model="m1", env_file=None)
+    factory, info = page.build_model(args)
+    assert info == {"mode": "live", "label": "m1 via local"}
+    wrapper = factory("ignored")
+    model = wrapper.model  # wrapped so that a busy provider is retried, as the measurements do
+    assert (model.base_url, model.model, model.temperature) == (server.url, "m1", None)
+    assert wrapper.retries == 3
+    with pytest.raises(SystemExit, match="--llm-model"):
+        page.build_model(argparse.Namespace(provider="local", llm_model=None, env_file=None))
+
+
+def test_the_page_runs_a_live_model_end_to_end_and_says_which_one(server, capsys):
+    import http.client
+    import threading
+
+    import ui as page
+
+    def factory(_scripted):
+        return live.HttpChatModel(server.url, "m1", "LOCAL_TEST_KEY", temperature=None)
+
+    info = {"mode": "live", "label": "m1 via local"}
+    srv = page.make_server("127.0.0.1", 0, factory, info)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        port = srv.server_address[1]
+
+        def call(method, path, body=None):
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=60)
+            payload = json.dumps(body).encode() if body is not None else None
+            conn.request(method, path, body=payload, headers={"Host": f"127.0.0.1:{port}"})
+            response = conn.getresponse()
+            return response.status, json.loads(response.read())
+
+        assert call("GET", "/api/config") == (200, info)
+        status, result = call("POST", "/api/run", {"behaviour": "honest"})
+        assert status == 200 and result["model"] == info
+        assert [a["outcome"] for a in result["attempts"]] == ["delivered"]
+        assert result["plaintextInPrompt"] == [] and result["verified"] is True
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def test_the_page_says_offline_when_it_is_scripted_and_names_the_model_when_it_is_live():
+    root = EXAMPLE
+    html = (root / "ui" / "index.html").read_text(encoding="utf-8")
+    script = (root / "ui" / "app.js").read_text(encoding="utf-8")
+    assert 'id="model-banner"' in html and 'id="model-used"' in html
+    assert "has not been run against a live provider" not in html  # no longer a fixed claim
+    assert "Scripted model, offline" in script and "Live model: " in script
+    assert "spec/sealing-verification.md" in script  # the live caveat points at the measurements
+    assert "innerHTML" not in script
+
+
+def test_the_demo_refuses_a_provider_without_a_model_or_a_key_and_says_what_to_do(tmp_path):
+    import subprocess
+
+    env = {k: v for k, v in os.environ.items() if not k.endswith("_API_KEY")}
+    base = [sys.executable, str(EXAMPLE / "demo.py")]
+    no_model = subprocess.run(
+        [*base, "--provider", "groq"], capture_output=True, env=env, timeout=60
+    )
+    assert no_model.returncode == 2 and b"--llm-model" in no_model.stderr
+    no_key = subprocess.run(
+        [*base, "--provider", "groq", "--llm-model", "m"], capture_output=True, env=env, timeout=60
+    )
+    assert no_key.returncode == 2 and b"GROQ_API_KEY" in no_key.stderr
+    scripted = subprocess.run([*base, "--only", "legit"], capture_output=True, env=env, timeout=60)
+    assert scripted.returncode == 0 and b"model: scripted" in scripted.stdout
+
+
+# -- the published results ----------------------------------------------------------------
+
+
+def test_the_table_in_the_verification_document_is_the_one_the_result_files_produce():
+    import live_table
+
+    document = live_table.DOCUMENT.read_text(encoding="utf-8")
+    assert live_table.embedded(document) == live_table.table(), (
+        "regenerate the table: python examples/sealed_support_agent/live_table.py"
+    )
+    assert live_table.main(["--check"]) == 0
+
+
+def test_the_published_results_hold_the_claims_made_about_them():
+    import glob
+
+    import live_table
+
+    summaries = [
+        s
+        for path in glob.glob(str(live_table.RESULTS / "results-*.json"))
+        for s in json.loads(Path(path).read_text(encoding="utf-8"))["summaries"]
+    ]
+    assert sum(s["valid"] for s in summaries) == 147  # "147 of 147" in the document and README
+    assert sum(s["leaks"] for s in summaries) == 0
+    assert sum(s["plaintext_in_prompts"] for s in summaries) == 0
+    spec = " ".join((ROOT / "spec" / "sealing-verification.md").read_text(encoding="utf-8").split())
+    readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
+    assert "147 of 147" in spec and "147 valid trials" in readme
+
+
+def test_no_published_result_file_holds_a_key_a_model_reply_or_anything_but_the_summary_fields():
+    import glob
+
+    import live_table
+
+    for path in glob.glob(str(live_table.RESULTS / "results-*.json")):
+        text = Path(path).read_text(encoding="utf-8")
+        assert not re.search(
+            r"AIza[0-9A-Za-z_-]{20,}|gsk_[0-9A-Za-z]{20,}|sk-[0-9A-Za-z]{20,}", text
+        )
+        document = json.loads(text)
+        assert set(document) == {"data", "corpus", "summaries", "raw"}
+        for target in document["raw"]:
+            for trial in target["trials"]:
+                assert "reply" not in trial and "prompt" not in trial  # only counts and outcomes
+
+
+def test_the_page_retries_a_busy_provider_instead_of_showing_a_503(server, monkeypatch, capsys):
+    """Found with a real provider: Gemini answered 503 'high demand' on the one call a page made."""
+    import http.client
+    import threading
+
+    import ui as page
+
+    waits = []
+    monkeypatch.setattr(time, "sleep", waits.append)
+    server.statuses[:] = [503, 503]
+    server.error_message = "This model is currently experiencing high demand."
+
+    def factory(_scripted):
+        return page.Retrying(
+            live.HttpChatModel(server.url, "m1", "LOCAL_TEST_KEY", temperature=None)
+        )
+
+    srv = page.make_server("127.0.0.1", 0, factory, {"mode": "live", "label": "m1 via local"})
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        port = srv.server_address[1]
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=60)
+        conn.request(
+            "POST",
+            "/api/run",
+            body=json.dumps({"behaviour": "honest"}),
+            headers={"Host": f"127.0.0.1:{port}"},
+        )
+        response = conn.getresponse()
+        result = json.loads(response.read())
+        assert response.status == 200 and result["verified"] is True
+        assert len(waits) >= 2  # waited out two 503s, then got an answer
+    finally:
+        srv.shutdown()
+        srv.server_close()
