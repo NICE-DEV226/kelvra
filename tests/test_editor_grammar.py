@@ -44,7 +44,7 @@ def grammar_vocabulary(grammar: dict) -> set[str]:
     """Words the grammar names explicitly, from its alternation groups."""
     words: set[str] = set()
     for pattern in _patterns(grammar):
-        for group in re.findall(r"\(([a-z_]+(?:\|[a-z_]+)+)\)", pattern):
+        for group in re.findall(r"\(([a-z_]+(?:\|[a-z_]+)*)\)", pattern):
             words |= set(group.split("|"))
     return words
 

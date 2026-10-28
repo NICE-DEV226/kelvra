@@ -166,12 +166,8 @@ def test_undeclared_declassifier_is_an_error(k):
 def test_purpose_limitation_blocks_a_technically_readable_flow():
     """Readable by the right audience, wrong purpose. Still refused."""
     p = Policy(name="PurposeTest")
-    p.add_source(
-        Source("crm", Label.confidential("marketing", "support", for_purpose="support"))
-    )
-    p.add_sink(
-        Sink("marketing.export", audience=PrincipalSet.of("marketing"), purpose="marketing")
-    )
+    p.add_source(Source("crm", Label.confidential("marketing", "support", for_purpose="support")))
+    p.add_sink(Sink("marketing.export", audience=PrincipalSet.of("marketing"), purpose="marketing"))
     k = Kelvra(p)
     data = k.read("crm", "customer list")
     with pytest.raises(Denied) as excinfo:

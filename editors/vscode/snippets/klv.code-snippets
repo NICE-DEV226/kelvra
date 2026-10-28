@@ -1,0 +1,50 @@
+{
+  "Source": {
+    "prefix": "source",
+    "description": "Declare a source and its label",
+    "body": [
+      "source ${1:inbox.imap}",
+      "    confidential(${2:customer})",
+      "    integrity ${3|trusted,untrusted|}"
+    ]
+  },
+  "Sink": {
+    "prefix": "sink",
+    "description": "Declare a sink and what it accepts",
+    "body": [
+      "sink ${1:slack.support_channel}",
+      "    accepts confidential(${2:support_team})"
+    ]
+  },
+  "Sink with endorsement and consent": {
+    "prefix": "sinkguarded",
+    "description": "A sink that wants a vouch and a human decision",
+    "body": [
+      "sink ${1:crm.write}",
+      "    accepts confidential(${2:customer})",
+      "    requires endorsed(${3:reviewer})",
+      "    requires consent(${4:customer})"
+    ]
+  },
+  "Declassify": {
+    "prefix": "declassify",
+    "description": "A declared way to widen who may read",
+    "body": [
+      "declassify ${1:pii_redaction}",
+      "    from confidential(${2:customer})",
+      "    to   confidential(${2:customer}, ${3:support_team})",
+      "    audit always"
+    ]
+  },
+  "Endorse": {
+    "prefix": "endorse",
+    "description": "A declared vouch, with someone answerable for it",
+    "body": [
+      "endorse ${1:human_review}",
+      "    from untrusted",
+      "    to   endorsed(${2:reviewer})",
+      "    requires consent(${2:reviewer})",
+      "    audit always"
+    ]
+  }
+}

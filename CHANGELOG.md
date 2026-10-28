@@ -40,6 +40,17 @@ an exact version.
   `record()` (a million events is about 454 MB). `LIMITATIONS.md` said no measurement existed; it now carries the table and
   says plainly that a long-lived agent would need the record cut into segments, which is not built. Nothing in the code
   changed for this one: it was a claim to measure, and the answer is that ordinary runs are small.
+- **`.klv` is displayed and coloured properly** (the editor, GitHub, the tests). Running VS Code's own TextMate
+  engine on the shipped policies showed 17 words of 240 with no colour: every name after the first in a
+  `principal` or `purpose` list, and every purpose after `for`. The grammar now covers them, and the names the parser
+  accepts with `-` and `.` (a randomly generated policy found `A-A`). `editors/highlight.py` applies that same grammar
+  with a small TextMate engine of its own, checked character by character against VS Code's on 152 files (40,803
+  characters, no difference), and draws `assets/policy.svg`, the coloured policy now at the top of the README's first
+  look (GitHub colours neither `klv` nor `kelvra` fences; the text stays underneath for copying). The extension gains
+  the alias `kelvra` (so fences colour in VS Code's Markdown preview), whole-name word selection for `inbox.imap`,
+  indentation that no longer treats `policy` as a block, snippets for `source`, `sink`, `declassify` and `endorse`, and a
+  description that no longer says there is no parser. `tests/test_klv_highlighting.py` checks all of it, including that
+  every word of every generated policy has a colour and that the picture is what the grammar produces.
 - **README and the editor extension's README no longer describe a project that does not exist** (N-06, N-07): the stdio
   gateway exists, the parser and a language server exist, and the grammar no longer colours `never`, an audit mode the
   parser refuses. `tests/test_docs_match_the_code.py` checks those sentences against the code.
